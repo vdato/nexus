@@ -1,0 +1,14 @@
+[
+  {
+    "name": "infra",
+    "color": "#a78bfa"
+  },
+  {
+    "name": "frontend",
+    "color": "#f1fb60"
+  },
+  {
+    "name": "backend",
+    "color": "#34d399"
+  }
+]

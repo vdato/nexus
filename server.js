@@ -17,6 +17,80 @@ if (fs.existsSync(envConfigPath)) {
   envVars = JSON.parse(fs.readFileSync(envConfigPath, 'utf-8'));
 }
 
+const groupsConfigPath = path.join(__dirname, 'groups.config.json');
+const DEFAULT_GROUP_DEFS = [
+  { name: 'infra', color: '#a78bfa' },
+  { name: 'frontend', color: '#60a5fa' },
+  { name: 'backend', color: '#34d399' },
+];
+const DEFAULT_PALETTE = ['#a78bfa', '#60a5fa', '#34d399', '#fbbf24', '#f87171', '#fb923c', '#38bdf8'];
+
+function isValidHexColor(s) {
+  return typeof s === 'string' && /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(s.trim());
+}
+
+function normalizeGroupEntry(raw, index) {
+  if (typeof raw === 'string') {
+    const name = raw.trim();
+    if (!name) return null;
+    return { name, color: DEFAULT_PALETTE[index % DEFAULT_PALETTE.length] };
+  }
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+    const name = String(raw.name ?? '').trim();
+    if (!name) return null;
+    let color = String(raw.color ?? '').trim();
+    if (!isValidHexColor(color)) {
+      color = DEFAULT_PALETTE[index % DEFAULT_PALETTE.length];
+    } else {
+      color = color.toLowerCase();
+      if (color.length === 4) {
+        color = `#${color[1]}${color[1]}${color[2]}${color[2]}${color[3]}${color[3]}`;
+      }
+    }
+    return { name, color };
+  }
+  return null;
+}
+
+function normalizeGroupList(parsed) {
+  if (!Array.isArray(parsed) || parsed.length === 0) return null;
+  const out = [];
+  const seen = new Set();
+  for (let i = 0; i < parsed.length; i++) {
+    const entry = normalizeGroupEntry(parsed[i], i);
+    if (!entry) continue;
+    if (seen.has(entry.name)) continue;
+    seen.add(entry.name);
+    out.push(entry);
+  }
+  return out.length ? out : null;
+}
+
+let groupList = normalizeGroupList(DEFAULT_GROUP_DEFS) || [...DEFAULT_GROUP_DEFS];
+if (fs.existsSync(groupsConfigPath)) {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(groupsConfigPath, 'utf-8'));
+    const normalized = normalizeGroupList(parsed);
+    if (normalized) {
+      groupList = normalized;
+      const hadOnlyStrings =
+        Array.isArray(parsed) && parsed.length > 0 && parsed.every((x) => typeof x === 'string');
+      if (hadOnlyStrings) {
+        saveGroupsConfig();
+      }
+    }
+  } catch {
+    groupList = normalizeGroupList(DEFAULT_GROUP_DEFS) || [...DEFAULT_GROUP_DEFS];
+  }
+}
+if (groupList.length === 0) {
+  groupList = [...DEFAULT_GROUP_DEFS];
+}
+
+function saveGroupsConfig() {
+  fs.writeFileSync(groupsConfigPath, JSON.stringify(groupList, null, 2) + '\n');
+}
+
 function saveConfig() {
   fs.writeFileSync(configPath, JSON.stringify(processConfigs, null, 2) + '\n');
 }
@@ -331,6 +405,52 @@ app.put('/api/env', (req, res) => {
   }
   envVars = body;
   saveEnvConfig();
+  res.json({ ok: true });
+});
+
+app.get('/api/groups', (_req, res) => {
+  res.json(groupList);
+});
+
+app.put('/api/groups', (req, res) => {
+  const body = req.body;
+  if (!Array.isArray(body)) {
+    return res.status(400).json({ error: 'Body must be a JSON array of { name, color } objects' });
+  }
+  const seen = new Set();
+  const out = [];
+  for (let i = 0; i < body.length; i++) {
+    const raw = body[i];
+    let name;
+    let color;
+    if (typeof raw === 'string') {
+      name = raw.trim();
+      color = DEFAULT_PALETTE[out.length % DEFAULT_PALETTE.length];
+    } else if (raw && typeof raw === 'object') {
+      name = String(raw.name ?? '').trim();
+      color = String(raw.color ?? '').trim();
+      if (!isValidHexColor(color)) {
+        return res.status(400).json({ error: `Invalid color for group "${name || '(unnamed)'}" (use #RGB or #RRGGBB)` });
+      }
+      color = color.toLowerCase();
+      if (color.length === 4) {
+        color = `#${color[1]}${color[1]}${color[2]}${color[2]}${color[3]}${color[3]}`;
+      }
+    } else {
+      continue;
+    }
+    if (!name) continue;
+    if (seen.has(name)) {
+      return res.status(400).json({ error: `Duplicate group name: "${name}"` });
+    }
+    seen.add(name);
+    out.push({ name, color });
+  }
+  if (out.length === 0) {
+    return res.status(400).json({ error: 'At least one group is required' });
+  }
+  groupList = out;
+  saveGroupsConfig();
   res.json({ ok: true });
 });
 

@@ -1,2 +1,133 @@
 [
+  {
+    "name": "end-web",
+    "command": "npm",
+    "args": [
+      "start"
+    ],
+    "group": "frontend",
+    "cwd": "{COREBRIDGE}/end-web"
+  },
+  {
+    "name": "azurite",
+    "command": "azurite",
+    "args": [],
+    "group": "infra"
+  },
+  {
+    "name": "sql1",
+    "command": "docker",
+    "args": [
+      "start",
+      "-a",
+      "sql1"
+    ],
+    "group": "infra",
+    "stopCommand": {
+      "command": "docker",
+      "args": [
+        "stop",
+        "sql1"
+      ]
+    }
+  },
+  {
+    "name": "end-api",
+    "command": "pwsh",
+    "args": [
+      "start_server.ps1"
+    ],
+    "group": "backend",
+    "cwd": "{COREBRIDGE}/end-api/Endor.Api.Web"
+  },
+  {
+    "name": "end-auth",
+    "command": "pwsh",
+    "args": [
+      "start_server.ps1"
+    ],
+    "group": "backend",
+    "cwd": "{COREBRIDGE}/end-auth/Endor.Auth.Web"
+  },
+  {
+    "name": "end-boardapi",
+    "command": "pwsh",
+    "args": [
+      "start_server.ps1"
+    ],
+    "group": "backend",
+    "cwd": "{COREBRIDGE}/end-boardapi/Endor.BoardApi.Web"
+  },
+  {
+    "name": "end-logging",
+    "command": "pwsh",
+    "args": [
+      "start_server.ps1"
+    ],
+    "group": "backend",
+    "cwd": "{COREBRIDGE}/end-logging/Endor.Logging.Web"
+  },
+  {
+    "name": "end-comms",
+    "command": "pwsh",
+    "args": [
+      "start_server.ps1"
+    ],
+    "group": "backend",
+    "cwd": "{COREBRIDGE}/end-comms/src/Endor.Comm.Web"
+  },
+  {
+    "name": "end-rtc",
+    "command": "pwsh",
+    "args": [
+      "start_server.ps1"
+    ],
+    "group": "backend",
+    "cwd": "{COREBRIDGE}/end-rtc/Endor.RTC.Core.Web"
+  },
+  {
+    "name": "end-rtcpeerhost",
+    "command": "pwsh",
+    "args": [
+      "start_server.ps1"
+    ],
+    "group": "backend",
+    "cwd": "{COREBRIDGE}/end-rtcpeerhost/Endor.RTC.PeerHost.Web"
+  },
+  {
+    "name": "end-search",
+    "command": "pwsh",
+    "args": [
+      "start_server.ps1"
+    ],
+    "group": "backend",
+    "cwd": "{COREBRIDGE}/end-search-core/Endor.Search.Web"
+  },
+  {
+    "name": "end-tasks",
+    "command": "pwsh",
+    "args": [
+      "start_server.ps1"
+    ],
+    "group": "backend",
+    "cwd": "{COREBRIDGE}/end-tasks/src/Endor.Tasks.Web"
+  },
+  {
+    "name": "end-ate",
+    "command": "pwsh",
+    "args": [
+      "start_server.ps1"
+    ],
+    "group": "backend",
+    "cwd": "{COREBRIDGE}/end-ate/ATE"
+  },
+  {
+    "name": "end-integrations",
+    "command": "pwsh",
+    "args": [
+      "start_server.ps1"
+    ],
+    "group": "backend",
+    "cwd": "{COREBRIDGE}/end-integrations/Endor.Integrations.Web"
+  }
 ]
