@@ -1,0 +1,14 @@
+{
+  "name": "xprocessmanager",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Local process manager dashboard for Corebridge services",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.0",
+    "tree-kill": "^1.2.2"
+  }
+}

@@ -1,0 +1,803 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>xprocessmanager</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --surface2: #242734;
+      --border: #2e3144;
+      --text: #e1e4ed;
+      --text-dim: #8b8fa3;
+      --green: #34d399;
+      --red: #f87171;
+      --yellow: #fbbf24;
+      --blue: #60a5fa;
+      --purple: #a78bfa;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 24px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+    }
+
+    header h1 {
+      font-size: 18px;
+      font-weight: 600;
+      letter-spacing: -0.3px;
+    }
+
+    .header-actions { display: flex; gap: 8px; }
+
+    button {
+      border: none;
+      border-radius: 6px;
+      padding: 7px 14px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    button:hover { opacity: 0.85; }
+    button:active { opacity: 0.7; }
+
+    .btn-start { background: var(--green); color: #000; }
+    .btn-stop { background: var(--red); color: #000; }
+    .btn-restart { background: var(--blue); color: #000; }
+    .btn-ghost {
+      background: var(--surface2);
+      color: var(--text-dim);
+      border: 1px solid var(--border);
+    }
+
+    .container { padding: 20px 24px; }
+
+    .group-title {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--text-dim);
+      margin: 20px 0 8px;
+    }
+    .group-title:first-child { margin-top: 0; }
+
+    .process-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+      gap: 10px;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px 16px;
+      transition: border-color 0.15s;
+      cursor: pointer;
+    }
+    .card:hover { border-color: #444860; }
+    .card.selected { border-color: var(--blue); }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+
+    .card-name {
+      font-size: 14px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      display: inline-block;
+      flex-shrink: 0;
+    }
+    .status-dot.running { background: var(--green); box-shadow: 0 0 6px var(--green); }
+    .status-dot.stopped { background: var(--text-dim); }
+    .status-dot.errored { background: var(--red); box-shadow: 0 0 6px var(--red); }
+    .status-dot.stopping { background: var(--yellow); }
+
+    .card-meta {
+      font-size: 11px;
+      color: var(--text-dim);
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .branch-tag {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 1px 6px;
+      font-size: 11px;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      color: var(--purple);
+    }
+
+    .card-actions {
+      display: flex;
+      gap: 4px;
+    }
+
+    .card-actions button {
+      padding: 4px 10px;
+      font-size: 12px;
+    }
+
+    .log-panel {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 300px;
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      transition: transform 0.2s;
+      z-index: 10;
+    }
+    .log-panel.hidden { transform: translateY(100%); }
+    .log-panel.dragging { transition: none; }
+
+    .log-resize-handle {
+      position: absolute;
+      top: -4px;
+      left: 0;
+      right: 0;
+      height: 8px;
+      cursor: ns-resize;
+      z-index: 11;
+    }
+    .log-resize-handle::after {
+      content: '';
+      display: block;
+      width: 40px;
+      height: 3px;
+      margin: 3px auto 0;
+      border-radius: 2px;
+      background: var(--border);
+      transition: background 0.15s;
+    }
+    .log-resize-handle:hover::after { background: var(--text-dim); }
+
+    .log-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 16px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .log-header span {
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .log-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px 16px;
+      font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+      font-size: 12px;
+      line-height: 1.6;
+    }
+
+    .log-line { white-space: pre-wrap; word-break: break-all; }
+    .log-line.stderr { color: var(--red); }
+    .log-line.system { color: var(--yellow); font-style: italic; }
+
+    .summary-bar {
+      display: flex;
+      gap: 16px;
+      font-size: 13px;
+      color: var(--text-dim);
+    }
+    .summary-bar .count { font-weight: 600; }
+    .summary-bar .running-count { color: var(--green); }
+    .summary-bar .stopped-count { color: var(--text-dim); }
+    .summary-bar .errored-count { color: var(--red); }
+
+
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 20;
+    }
+    .modal-overlay.hidden { display: none; }
+
+    .modal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 24px;
+      width: 440px;
+      max-width: 90vw;
+    }
+
+    .modal h2 {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 16px;
+    }
+
+    .form-group {
+      margin-bottom: 12px;
+    }
+
+    .form-group label {
+      display: block;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-dim);
+      margin-bottom: 4px;
+    }
+
+    .form-group input, .form-group select {
+      width: 100%;
+      padding: 8px 10px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--surface2);
+      color: var(--text);
+      font-size: 13px;
+      font-family: inherit;
+      outline: none;
+    }
+    .form-group input:focus, .form-group select:focus {
+      border-color: var(--blue);
+    }
+
+    .form-group .hint {
+      font-size: 11px;
+      color: var(--text-dim);
+      margin-top: 2px;
+    }
+
+    .modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-top: 18px;
+    }
+
+    .btn-delete {
+      background: transparent;
+      color: var(--red);
+      border: 1px solid var(--border);
+      padding: 7px 14px;
+      font-size: 13px;
+      font-weight: 500;
+    }
+    .btn-delete:hover { border-color: var(--red); }
+
+    .btn-gear {
+      background: transparent;
+      color: var(--text-dim);
+      border: 1px solid var(--border);
+      padding: 4px 6px;
+      line-height: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .btn-gear:hover { color: var(--text); border-color: #444860; }
+
+    .env-rows { margin-bottom: 12px; }
+
+    .env-row {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 6px;
+      align-items: center;
+    }
+
+    .env-row input {
+      padding: 7px 9px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--surface2);
+      color: var(--text);
+      font-size: 12px;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      outline: none;
+    }
+    .env-row input:focus { border-color: var(--blue); }
+    .env-row input.env-key { width: 160px; }
+    .env-row input.env-val { flex: 1; }
+
+    .env-row .btn-remove-row {
+      background: transparent;
+      color: var(--text-dim);
+      border: none;
+      padding: 4px 6px;
+      font-size: 14px;
+      line-height: 1;
+      cursor: pointer;
+    }
+    .env-row .btn-remove-row:hover { color: var(--red); }
+
+    .btn-add-row {
+      background: transparent;
+      color: var(--blue);
+      border: 1px dashed var(--border);
+      border-radius: 6px;
+      padding: 6px 12px;
+      font-size: 12px;
+      width: 100%;
+      cursor: pointer;
+    }
+    .btn-add-row:hover { border-color: var(--blue); }
+
+    .env-note {
+      font-size: 11px;
+      color: var(--text-dim);
+      margin-bottom: 14px;
+    }
+
+    .modal-wide { width: 540px; }
+  </style>
+</head>
+<body>
+  <header>
+    <div style="display:flex;align-items:center;gap:16px;">
+      <h1>xprocessmanager</h1>
+      <div class="summary-bar" id="summary"></div>
+    </div>
+    <div class="header-actions">
+      <button class="btn-ghost" onclick="openEnvModal()">Environment</button>
+      <button class="btn-ghost" onclick="document.getElementById('importFile').click()">Import</button>
+      <input type="file" id="importFile" accept=".json" style="display:none" onchange="importProcesses(this)" />
+      <button class="btn-ghost" onclick="openAddModal()">+ Add Process</button>
+      <button class="btn-start" onclick="api('/api/start-all','POST')">Start All</button>
+      <button class="btn-stop" onclick="api('/api/stop-all','POST')">Stop All</button>
+    </div>
+  </header>
+
+  <div class="container" id="main"></div>
+
+  <div class="log-panel hidden" id="logPanel">
+    <div class="log-resize-handle" id="logResizeHandle"></div>
+    <div class="log-header">
+      <span id="logTitle">Logs</span>
+      <button class="btn-ghost" onclick="closeLog()">Close</button>
+    </div>
+    <div class="log-body" id="logBody"></div>
+  </div>
+
+  <div class="modal-overlay hidden" id="processModal" onclick="if(event.target===this)closeProcessModal()">
+    <div class="modal">
+      <h2 id="processModalTitle">Add Process</h2>
+      <div class="form-group">
+        <label>Name</label>
+        <input type="text" id="f-name" placeholder="my-service" />
+      </div>
+      <div class="form-group">
+        <label>Command</label>
+        <input type="text" id="f-command" placeholder="pwsh, node, docker, npm..." />
+      </div>
+      <div class="form-group">
+        <label>Arguments</label>
+        <input type="text" id="f-args" placeholder="start_server.ps1  (space-separated)" />
+        <div class="hint">Space-separated. Supports {ENV_KEY} templates</div>
+      </div>
+      <div class="form-group">
+        <label>Working Directory</label>
+        <input type="text" id="f-cwd" placeholder="{BASE_DIR}/my-project  (optional)" />
+        <div class="hint">Use {ENV_KEY} to reference environment variables, e.g. {BASE_DIR}/src</div>
+        <div id="f-cwd-resolved" class="hint" style="color:var(--purple);display:none;margin-top:4px;font-family:'SF Mono','Fira Code',monospace"></div>
+      </div>
+      <div class="form-group">
+        <label>Group</label>
+        <select id="f-group">
+          <option value="backend">backend</option>
+          <option value="frontend">frontend</option>
+          <option value="infra">infra</option>
+          <option value="other">other</option>
+        </select>
+      </div>
+      <div class="modal-actions" style="justify-content:space-between">
+        <div id="processModalDelete" style="display:none">
+          <button class="btn-delete" onclick="removeFromModal()">Remove Process</button>
+        </div>
+        <div style="display:flex;gap:8px;margin-left:auto">
+          <button class="btn-ghost" onclick="closeProcessModal()">Cancel</button>
+          <button class="btn-start" id="processModalSubmit" onclick="submitProcessModal()">Add</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay hidden" id="envModal" onclick="if(event.target===this)closeEnvModal()">
+    <div class="modal modal-wide">
+      <h2>Environment Variables</h2>
+      <div class="env-note">These variables are injected into all processes at startup. Restart running processes to pick up changes.</div>
+      <div class="env-rows" id="envRows"></div>
+      <button class="btn-add-row" onclick="addEnvRow('','')">+ Add Variable</button>
+      <div class="modal-actions">
+        <button class="btn-ghost" onclick="closeEnvModal()">Cancel</button>
+        <button class="btn-start" onclick="saveEnv()">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let selectedProcess = null;
+    let logSince = 0;
+    let logAutoScroll = true;
+    let lastSnapshot = '';
+
+    async function api(url, method = 'GET', body = null) {
+      const opts = { method };
+      if (body) {
+        opts.headers = { 'Content-Type': 'application/json' };
+        opts.body = JSON.stringify(body);
+      }
+      const res = await fetch(url, opts);
+      return res.json();
+    }
+
+    async function importProcesses(input) {
+      const file = input.files[0];
+      input.value = '';
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const data = JSON.parse(text);
+        if (!Array.isArray(data)) return alert('File must contain a JSON array of process configs.');
+        const result = await api('/api/config/import', 'POST', data);
+        if (result.error) return alert(result.error);
+        const msgs = [];
+        if (result.added.length) msgs.push(`Added: ${result.added.join(', ')}`);
+        if (result.skipped.length) msgs.push(`Skipped: ${result.skipped.map(s => `${s.name} (${s.reason})`).join(', ')}`);
+        alert(msgs.join('\n') || 'Nothing to import.');
+        refresh(true);
+      } catch (e) {
+        alert('Invalid JSON file.');
+      }
+    }
+
+    let editingProcess = null;
+
+    function showResolvedCwd(cwd, resolvedCwd) {
+      const el = document.getElementById('f-cwd-resolved');
+      if (cwd && resolvedCwd && cwd !== resolvedCwd) {
+        el.textContent = 'Resolved: ' + resolvedCwd;
+        el.style.display = 'block';
+      } else {
+        el.style.display = 'none';
+      }
+    }
+
+    function openAddModal() {
+      editingProcess = null;
+      document.getElementById('processModalTitle').textContent = 'Add Process';
+      document.getElementById('processModalSubmit').textContent = 'Add';
+      document.getElementById('f-name').disabled = false;
+      ['f-name', 'f-command', 'f-args', 'f-cwd'].forEach(id => {
+        document.getElementById(id).value = '';
+      });
+      document.getElementById('f-group').value = 'backend';
+      showResolvedCwd(null, null);
+      document.getElementById('processModalDelete').style.display = 'none';
+      document.getElementById('processModal').classList.remove('hidden');
+      document.getElementById('f-name').focus();
+    }
+
+    async function openEditModal(name) {
+      const [config, procs] = await Promise.all([
+        api(`/api/config/${name}`),
+        api('/api/processes'),
+      ]);
+      if (config.error) return alert(config.error);
+      const proc = procs.find(p => p.name === name);
+      editingProcess = name;
+      document.getElementById('processModalTitle').textContent = `Edit — ${name}`;
+      document.getElementById('processModalSubmit').textContent = 'Save';
+      document.getElementById('f-name').value = config.name;
+      document.getElementById('f-name').disabled = false;
+      document.getElementById('f-command').value = config.command || '';
+      document.getElementById('f-args').value = (config.args || []).join(' ');
+      document.getElementById('f-cwd').value = config.cwd || '';
+      document.getElementById('f-group').value = config.group || 'backend';
+      showResolvedCwd(config.cwd, proc?.resolvedCwd);
+      document.getElementById('processModalDelete').style.display = 'block';
+      document.getElementById('processModal').classList.remove('hidden');
+      document.getElementById('f-command').focus();
+    }
+
+    function closeProcessModal() {
+      document.getElementById('processModal').classList.add('hidden');
+      showResolvedCwd(null, null);
+      editingProcess = null;
+    }
+
+    async function submitProcessModal() {
+      const name = document.getElementById('f-name').value.trim();
+      const command = document.getElementById('f-command').value.trim();
+      const argsRaw = document.getElementById('f-args').value.trim();
+      const cwd = document.getElementById('f-cwd').value.trim();
+      const group = document.getElementById('f-group').value;
+
+      if (!name) return alert('Name is required.');
+      if (!command) return alert('Command is required.');
+      const args = argsRaw ? argsRaw.split(/\s+/) : [];
+
+      let result;
+      if (editingProcess) {
+        result = await api(`/api/config/${editingProcess}`, 'PUT', { name, command, args, cwd: cwd || undefined, group });
+      } else {
+        result = await api('/api/config', 'POST', { name, command, args, cwd: cwd || undefined, group });
+      }
+      if (result.error) return alert(result.error);
+
+      if (editingProcess && name && name !== editingProcess && selectedProcess === editingProcess) {
+        selectedProcess = name;
+        document.getElementById('logTitle').textContent = `Logs — ${name}`;
+      }
+
+      closeProcessModal();
+      refresh();
+    }
+
+    async function openEnvModal() {
+      const env = await api('/api/env');
+      const container = document.getElementById('envRows');
+      container.innerHTML = '';
+      const entries = Object.entries(env);
+      if (entries.length === 0) {
+        addEnvRow('', '');
+      } else {
+        for (const [key, val] of entries) {
+          addEnvRow(key, val);
+        }
+      }
+      document.getElementById('envModal').classList.remove('hidden');
+    }
+
+    function closeEnvModal() {
+      document.getElementById('envModal').classList.add('hidden');
+    }
+
+    function addEnvRow(key, val) {
+      const container = document.getElementById('envRows');
+      const row = document.createElement('div');
+      row.className = 'env-row';
+      row.innerHTML =
+        `<input type="text" class="env-key" placeholder="KEY" value="${escHtml(key)}" />` +
+        `<input type="text" class="env-val" placeholder="value" value="${escHtml(val)}" />` +
+        `<button class="btn-remove-row" onclick="this.parentElement.remove()">&times;</button>`;
+      container.appendChild(row);
+      if (!key) row.querySelector('.env-key').focus();
+    }
+
+    function escHtml(s) {
+      return s.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    async function saveEnv() {
+      const rows = document.querySelectorAll('#envRows .env-row');
+      const env = {};
+      for (const row of rows) {
+        const key = row.querySelector('.env-key').value.trim();
+        const val = row.querySelector('.env-val').value;
+        if (key) env[key] = val;
+      }
+      const result = await api('/api/env', 'PUT', env);
+      if (result.error) return alert(result.error);
+      closeEnvModal();
+    }
+
+    async function removeProcess(name) {
+      if (!confirm(`Remove "${name}" from config?`)) return;
+      const result = await api(`/api/config/${name}`, 'DELETE');
+      if (result.error) return alert(result.error);
+      if (selectedProcess === name) closeLog();
+      refresh();
+    }
+
+    async function removeFromModal() {
+      if (!editingProcess) return;
+      await removeProcess(editingProcess);
+      closeProcessModal();
+    }
+
+    function formatUptime(ms) {
+      if (!ms) return '-';
+      const s = Math.floor(ms / 1000);
+      if (s < 60) return `${s}s`;
+      const m = Math.floor(s / 60);
+      if (m < 60) return `${m}m ${s % 60}s`;
+      const h = Math.floor(m / 60);
+      return `${h}h ${m % 60}m`;
+    }
+
+    function renderProcesses(procs) {
+      const main = document.getElementById('main');
+      const groups = {};
+      const counts = { running: 0, stopped: 0, errored: 0, stopping: 0 };
+
+      for (const p of procs) {
+        const g = p.group || 'other';
+        if (!groups[g]) groups[g] = [];
+        groups[g].push(p);
+        if (counts[p.status] !== undefined) counts[p.status]++;
+        else counts.stopped++;
+      }
+
+      document.getElementById('summary').innerHTML =
+        `<span>Total: <span class="count">${procs.length}</span></span>` +
+        `<span>Running: <span class="count running-count">${counts.running}</span></span>` +
+        `<span>Stopped: <span class="count stopped-count">${counts.stopped + counts.stopping}</span></span>` +
+        (counts.errored ? `<span>Errored: <span class="count errored-count">${counts.errored}</span></span>` : '');
+
+      const order = ['infra', 'frontend', 'backend'];
+      const sorted = Object.entries(groups).sort(
+        (a, b) => order.indexOf(a[0]) - order.indexOf(b[0])
+      );
+
+      let html = '';
+      for (const [group, items] of sorted) {
+        html += `<div class="group-title">${group}</div><div class="process-grid">`;
+        for (const p of items) {
+          const uptime = p.status === 'running' && p.startedAt
+            ? formatUptime(Date.now() - p.startedAt)
+            : '-';
+          const isSelected = selectedProcess === p.name;
+          html += `
+            <div class="card ${isSelected ? 'selected' : ''}" onclick="selectLog('${p.name}')">
+              <div class="card-header">
+                <div class="card-name">
+                  <span class="status-dot ${p.status}"></span>
+                  ${p.name}
+                </div>
+                <div class="card-actions">
+                  ${p.status === 'running'
+                    ? `<button class="btn-stop" onclick="event.stopPropagation();api('/api/processes/${p.name}/stop','POST').then(refresh)">Stop</button>
+                       <button class="btn-restart" onclick="event.stopPropagation();api('/api/processes/${p.name}/restart','POST').then(refresh)">Restart</button>`
+                    : `<button class="btn-start" onclick="event.stopPropagation();api('/api/processes/${p.name}/start','POST').then(refresh)">Start</button>`
+                  }
+                  <button class="btn-gear" onclick="event.stopPropagation();openEditModal('${p.name}')"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
+                </div>
+              </div>
+              <div class="card-meta">
+                <span>PID: ${p.pid || '-'}</span>
+                <span>Uptime: ${uptime}</span>
+                ${p.branch ? `<span class="branch-tag">${p.branch}</span>` : ''}
+              </div>
+            </div>`;
+        }
+        html += '</div>';
+      }
+      main.innerHTML = html;
+
+      main.style.paddingBottom = selectedProcess ? (logPanelHeight + 20) + 'px' : '';
+    }
+
+    async function refresh(force) {
+      const procs = await api('/api/processes');
+      const snapshot = JSON.stringify(procs.map(p => ({
+        name: p.name, status: p.status, pid: p.pid, group: p.group, branch: p.branch,
+      }))) + '|' + selectedProcess;
+      if (!force && snapshot === lastSnapshot) return;
+      lastSnapshot = snapshot;
+      renderProcesses(procs);
+    }
+
+    function selectLog(name) {
+      if (selectedProcess === name) {
+        closeLog();
+        return;
+      }
+      selectedProcess = name;
+      logSince = 0;
+      document.getElementById('logBody').innerHTML = '';
+      document.getElementById('logTitle').textContent = `Logs — ${name}`;
+      document.getElementById('logPanel').classList.remove('hidden');
+      fetchLogs();
+      refresh();
+    }
+
+    function closeLog() {
+      selectedProcess = null;
+      document.getElementById('logPanel').classList.add('hidden');
+      refresh();
+    }
+
+    async function fetchLogs() {
+      if (!selectedProcess) return;
+      const logs = await api(`/api/processes/${selectedProcess}/logs?since=${logSince}`);
+      const body = document.getElementById('logBody');
+
+      for (const entry of logs) {
+        const div = document.createElement('div');
+        div.className = `log-line ${entry.source}`;
+        div.textContent = entry.text;
+        body.appendChild(div);
+        logSince = Math.max(logSince, entry.ts);
+      }
+
+      if (logAutoScroll && logs.length > 0) {
+        body.scrollTop = body.scrollHeight;
+      }
+    }
+
+    const logBodyEl = document.getElementById('logBody');
+    logBodyEl.addEventListener('scroll', () => {
+      const { scrollTop, scrollHeight, clientHeight } = logBodyEl;
+      logAutoScroll = scrollHeight - scrollTop - clientHeight < 40;
+    });
+
+    let logPanelHeight = 300;
+    const logPanel = document.getElementById('logPanel');
+    const resizeHandle = document.getElementById('logResizeHandle');
+
+    function applyLogPanelHeight(h) {
+      logPanelHeight = Math.max(120, Math.min(h, window.innerHeight - 60));
+      logPanel.style.height = logPanelHeight + 'px';
+      document.getElementById('main').style.paddingBottom = selectedProcess ? (logPanelHeight + 20) + 'px' : '';
+    }
+
+    resizeHandle.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      logPanel.classList.add('dragging');
+      const onMove = (ev) => applyLogPanelHeight(window.innerHeight - ev.clientY);
+      const onUp = () => {
+        logPanel.classList.remove('dragging');
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+      };
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+
+    resizeHandle.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      logPanel.classList.add('dragging');
+      const onMove = (ev) => applyLogPanelHeight(window.innerHeight - ev.touches[0].clientY);
+      const onEnd = () => {
+        logPanel.classList.remove('dragging');
+        document.removeEventListener('touchmove', onMove);
+        document.removeEventListener('touchend', onEnd);
+      };
+      document.addEventListener('touchmove', onMove);
+      document.addEventListener('touchend', onEnd);
+    });
+
+    refresh();
+    setInterval(refresh, 3000);
+    setInterval(fetchLogs, 1500);
+  </script>
+</body>
+</html>
