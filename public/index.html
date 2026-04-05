@@ -400,6 +400,49 @@
     }
 
     .modal-wide { width: 540px; }
+    .settings-tabs {
+      display: flex;
+      gap: 0;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 4px;
+    }
+    .settings-tab {
+      padding: 8px 16px;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-dim);
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: color 0.15s, border-color 0.15s;
+      background: none;
+      border-top: none;
+      border-left: none;
+      border-right: none;
+    }
+    .settings-tab:hover { color: var(--text); }
+    .settings-tab.active {
+      color: var(--text);
+      border-bottom-color: var(--accent, #60a5fa);
+    }
+    .settings-tab-content { display: none; }
+    .settings-tab-content.active { display: block; }
+    .setting-field { margin-bottom: 14px; }
+    .setting-field label {
+      display: block;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-dim);
+      margin-bottom: 4px;
+    }
+    .setting-field input[type="number"] {
+      width: 120px;
+      padding: 6px 8px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--text);
+      font-size: 13px;
+    }
     .modal-scroll {
       max-height: min(560px, calc(100vh - 120px));
       overflow-y: auto;
@@ -495,6 +538,7 @@
     <div class="log-resize-handle" id="logResizeHandle"></div>
     <div class="log-header">
       <span id="logTitle">Logs</span>
+      <span id="logLastRefresh" style="font-size:11px;color:var(--text-dim);margin-left:auto;margin-right:12px;"></span>
       <button class="btn-ghost" onclick="closeLog()">Close</button>
     </div>
     <div class="log-body" id="logBody"></div>
@@ -541,24 +585,60 @@
   <div class="modal-overlay hidden" id="settingsModal" onclick="if(event.target===this)closeSettingsModal()">
     <div class="modal modal-wide">
       <h2>Settings</h2>
+      <div class="settings-tabs">
+        <button class="settings-tab active" onclick="switchSettingsTab('general', this)">General</button>
+        <button class="settings-tab" onclick="switchSettingsTab('advanced', this)">Advanced</button>
+      </div>
       <div class="modal-scroll">
-        <div class="settings-section">
-          <div class="settings-section-title">Import processes</div>
-          <div class="env-note">Choose a JSON file in the same format as <code>processes.config.json</code> (an array of process definitions). Existing names are skipped.</div>
-          <button type="button" class="btn-ghost" onclick="document.getElementById('importFile').click()">Import…</button>
-          <input type="file" id="importFile" accept=".json" style="display:none" onchange="importProcesses(this)" />
+        <div id="settingsTabGeneral" class="settings-tab-content active">
+          <div class="settings-section">
+            <div class="settings-section-title">Import processes</div>
+            <div class="env-note">Choose a JSON file in the same format as <code>processes.config.json</code> (an array of process definitions). Existing names are skipped.</div>
+            <button type="button" class="btn-ghost" onclick="document.getElementById('importFile').click()">Import…</button>
+            <input type="file" id="importFile" accept=".json" style="display:none" onchange="importProcesses(this)" />
+          </div>
+          <div class="settings-section">
+            <div class="settings-section-title">Groups</div>
+            <div class="env-note">Process groups, section order, and card border colors. Stored in <code>groups.config.json</code>. At least one group is required.</div>
+            <div class="env-rows group-rows" id="groupRows"></div>
+            <button type="button" class="btn-add-row" onclick="addGroupRow('')">+ Add group</button>
+          </div>
+          <div class="settings-section">
+            <div class="settings-section-title">Environment variables</div>
+            <div class="env-note">These variables are injected into all processes at startup. Restart running processes to pick up changes.</div>
+            <div class="env-rows" id="envRows"></div>
+            <button type="button" class="btn-add-row" onclick="addEnvRow('','')">+ Add Variable</button>
+          </div>
         </div>
-        <div class="settings-section">
-          <div class="settings-section-title">Groups</div>
-          <div class="env-note">Process groups, section order, and card border colors. Stored in <code>groups.config.json</code>. At least one group is required.</div>
-          <div class="env-rows group-rows" id="groupRows"></div>
-          <button type="button" class="btn-add-row" onclick="addGroupRow('')">+ Add group</button>
-        </div>
-        <div class="settings-section">
-          <div class="settings-section-title">Environment variables</div>
-          <div class="env-note">These variables are injected into all processes at startup. Restart running processes to pick up changes.</div>
-          <div class="env-rows" id="envRows"></div>
-          <button type="button" class="btn-add-row" onclick="addEnvRow('','')">+ Add Variable</button>
+        <div id="settingsTabAdvanced" class="settings-tab-content">
+          <div class="settings-section" style="margin-top:0;padding-top:0;border-top:none;">
+            <div class="settings-section-title">Polling intervals</div>
+            <div class="env-note">Control how frequently the UI fetches updates. Changes apply after saving (poll intervals apply immediately, port/maxLogLines require server restart).</div>
+            <div class="setting-field">
+              <label>Log poll interval (ms)</label>
+              <input type="number" id="sys-logPollInterval" min="100" step="100" />
+            </div>
+            <div class="setting-field">
+              <label>Status poll interval (ms)</label>
+              <input type="number" id="sys-statusPollInterval" min="500" step="500" />
+            </div>
+            <div class="setting-field">
+              <label>Popover poll interval (ms)</label>
+              <input type="number" id="sys-popoverPollInterval" min="500" step="500" />
+            </div>
+          </div>
+          <div class="settings-section">
+            <div class="settings-section-title">Server</div>
+            <div class="env-note">Requires server restart to take effect.</div>
+            <div class="setting-field">
+              <label>Port</label>
+              <input type="number" id="sys-port" min="1" max="65535" />
+            </div>
+            <div class="setting-field">
+              <label>Max log lines per process</label>
+              <input type="number" id="sys-maxLogLines" min="50" step="50" />
+            </div>
+          </div>
         </div>
       </div>
       <div class="modal-actions">
@@ -689,7 +769,7 @@
 
       if (!name) return alert('Name is required.');
       if (!command) return alert('Command is required.');
-      const args = argsRaw ? argsRaw.split(/\s+/) : [];
+      const args = argsRaw ? argsRaw.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g).map(a => a.replace(/^["']|["']$/g, '')) : [];
 
       let result;
       if (editingProcess) {
@@ -708,8 +788,24 @@
       refresh();
     }
 
+    function switchSettingsTab(tab, btn) {
+      document.querySelectorAll('.settings-tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.settings-tab-content').forEach(t => t.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById(tab === 'advanced' ? 'settingsTabAdvanced' : 'settingsTabGeneral').classList.add('active');
+    }
+
     async function openSettingsModal() {
-      const [env, groupData] = await Promise.all([api('/api/env'), api('/api/groups')]);
+      const [env, groupData, sys] = await Promise.all([api('/api/env'), api('/api/groups'), api('/api/system')]);
+      document.getElementById('sys-logPollInterval').value = sys.logPollInterval || 500;
+      document.getElementById('sys-statusPollInterval').value = sys.statusPollInterval || 3000;
+      document.getElementById('sys-popoverPollInterval').value = sys.popoverPollInterval || 1500;
+      document.getElementById('sys-port').value = sys.port || 1337;
+      document.getElementById('sys-maxLogLines').value = sys.maxLogLines || 500;
+      // Reset to General tab
+      document.querySelectorAll('.settings-tab').forEach((t, i) => t.classList.toggle('active', i === 0));
+      document.getElementById('settingsTabGeneral').classList.add('active');
+      document.getElementById('settingsTabAdvanced').classList.remove('active');
       const container = document.getElementById('envRows');
       container.innerHTML = '';
       const entries = Object.entries(env);
@@ -817,7 +913,17 @@
       if (r1.error) return alert(r1.error);
       const r2 = await api('/api/groups', 'PUT', groups);
       if (r2.error) return alert(r2.error);
+      const sysUpdate = {
+        port: parseInt(document.getElementById('sys-port').value) || 1337,
+        maxLogLines: parseInt(document.getElementById('sys-maxLogLines').value) || 500,
+        logPollInterval: parseInt(document.getElementById('sys-logPollInterval').value) || 500,
+        statusPollInterval: parseInt(document.getElementById('sys-statusPollInterval').value) || 3000,
+        popoverPollInterval: parseInt(document.getElementById('sys-popoverPollInterval').value) || 1500,
+      };
+      const r3 = await api('/api/system', 'PUT', sysUpdate);
+      if (r3.error) return alert(r3.error);
       closeSettingsModal();
+      await applyPollIntervals();
       refresh(true);
     }
 
@@ -940,7 +1046,7 @@
         requestAnimationFrame(() => positionPopover(anchorEl));
       });
       fetchPopoverLogs();
-      popoverPollTimer = setInterval(fetchPopoverLogs, 1500);
+      popoverPollTimer = setInterval(fetchPopoverLogs, window.__popoverPollInterval || 1500);
     }
 
     function onCardHoverEnter(name, card) {
@@ -1022,8 +1128,8 @@
                 <div class="card-actions">
                   ${p.status === 'running'
                     ? `<button class="btn-stop" onclick="event.stopPropagation();api('/api/processes/${p.name}/stop','POST').then(refresh)">Stop</button>
-                       <button class="btn-restart" onclick="event.stopPropagation();api('/api/processes/${p.name}/restart','POST').then(refresh)">Restart</button>`
-                    : `<button class="btn-start" onclick="event.stopPropagation();api('/api/processes/${p.name}/start','POST').then(refresh)">Start</button>`
+                       <button class="btn-restart" onclick="event.stopPropagation();api('/api/processes/${p.name}/restart','POST').then(()=>{selectLog('${p.name}');refresh(true)})">Restart</button>`
+                    : `<button class="btn-start" onclick="event.stopPropagation();api('/api/processes/${p.name}/start','POST').then(()=>{selectLog('${p.name}');refresh(true)})">Start</button>`
                   }
                   <button class="btn-gear" onclick="event.stopPropagation();openEditModal('${p.name}')"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
                 </div>
@@ -1114,6 +1220,9 @@
       if (logAutoScroll && logs.length > 0) {
         body.scrollTop = body.scrollHeight;
       }
+
+      const now = new Date();
+      document.getElementById('logLastRefresh').textContent = 'Last refresh: ' + now.toLocaleTimeString();
     }
 
     const logBodyEl = document.getElementById('logBody');
@@ -1165,9 +1274,17 @@
       }
     });
 
+    let refreshTimer, logTimer;
+    async function applyPollIntervals() {
+      const sys = await api('/api/system');
+      window.__popoverPollInterval = sys.popoverPollInterval || 1500;
+      clearInterval(refreshTimer);
+      clearInterval(logTimer);
+      refreshTimer = setInterval(refresh, sys.statusPollInterval || 3000);
+      logTimer = setInterval(fetchLogs, sys.logPollInterval || 500);
+    }
     refresh();
-    setInterval(refresh, 3000);
-    setInterval(fetchLogs, 1500);
+    applyPollIntervals();
   </script>
 </body>
 </html>

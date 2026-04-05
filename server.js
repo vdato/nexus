@@ -4,9 +4,12 @@ const kill = require('tree-kill');
 const path = require('path');
 const fs = require('fs');
 
+const systemConfigPath = path.join(__dirname, 'system.config.json');
+const systemConfig = fs.existsSync(systemConfigPath) ? JSON.parse(fs.readFileSync(systemConfigPath, 'utf-8')) : {};
+
 const app = express();
-const PORT = 1337;
-const MAX_LOG_LINES = 500;
+const PORT = systemConfig.port || 1337;
+const MAX_LOG_LINES = systemConfig.maxLogLines || 500;
 
 const configPath = path.join(__dirname, 'processes.config.json');
 let processConfigs = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
@@ -155,16 +158,17 @@ function startProcess(name) {
 
   const opts = {
     stdio: ['ignore', 'pipe', 'pipe'],
-    env: { ...process.env, ...envVars },
+    env: { ...process.env, PYTHONUNBUFFERED: '1', ...envVars },
   };
   if (resolvedCwd) opts.cwd = resolvedCwd;
 
+  console.log(`[xpm] Spawning: ${config.command} ${JSON.stringify(resolvedArgs)} cwd=${resolvedCwd || '(none)'}`);
   const proc = spawn(config.command, resolvedArgs, opts);
 
   const entry = {
     proc,
     status: 'running',
-    logs: [],
+    logs: [{ ts: Date.now(), source: 'system', text: `Spawning: ${config.command} ${resolvedArgs.join(' ')}` }],
     startedAt: Date.now(),
     config,
   };
@@ -240,6 +244,16 @@ app.get('/api/processes', (_req, res) => {
     };
   });
   res.json(result);
+});
+
+app.get('/api/system', (req, res) => {
+  res.json({
+    port: systemConfig.port || 1337,
+    maxLogLines: systemConfig.maxLogLines || 500,
+    logPollInterval: systemConfig.logPollInterval || 500,
+    statusPollInterval: systemConfig.statusPollInterval || 3000,
+    popoverPollInterval: systemConfig.popoverPollInterval || 1500,
+  });
 });
 
 app.get('/api/processes/:name/logs', (req, res) => {
@@ -406,6 +420,19 @@ app.put('/api/env', (req, res) => {
   envVars = body;
   saveEnvConfig();
   res.json({ ok: true });
+});
+
+app.put('/api/system', (req, res) => {
+  const body = req.body;
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return res.status(400).json({ error: 'Body must be a JSON object' });
+  }
+  const allowed = ['port', 'maxLogLines', 'logPollInterval', 'statusPollInterval', 'popoverPollInterval'];
+  for (const key of allowed) {
+    if (body[key] !== undefined) systemConfig[key] = body[key];
+  }
+  fs.writeFileSync(systemConfigPath, JSON.stringify(systemConfig, null, 2) + '\n');
+  res.json({ ok: true, note: 'Restart server for port/maxLogLines changes to take effect' });
 });
 
 app.get('/api/groups', (_req, res) => {

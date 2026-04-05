@@ -10,5 +10,9 @@
   {
     "name": "backend",
     "color": "#34d399"
+  },
+  {
+    "name": "agents",
+    "color": "#888888"
   }
 ]

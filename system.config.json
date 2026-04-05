@@ -1,0 +1,7 @@
+{
+  "port": 1337,
+  "maxLogLines": 500,
+  "logPollInterval": 500,
+  "statusPollInterval": 3000,
+  "popoverPollInterval": 1500
+}
