@@ -3,6 +3,22 @@ const { spawn, execFileSync } = require('child_process');
 const kill = require('tree-kill');
 const path = require('path');
 const fs = require('fs');
+const { WebSocketServer } = require('ws');
+const http = require('http');
+
+const os = require('os');
+
+// Ensure the running node's bin dir is in PATH (covers nvm-managed CLIs)
+const nodeBinDir = path.dirname(process.execPath);
+if (!process.env.PATH.split(':').includes(nodeBinDir)) {
+  process.env.PATH = nodeBinDir + ':' + process.env.PATH;
+}
+
+// Ensure ~/.local/bin is in PATH (covers newly upgraded native CLIs like claude)
+const localBinDir = path.join(os.homedir(), '.local', 'bin');
+if (!process.env.PATH.split(':').includes(localBinDir)) {
+  process.env.PATH = localBinDir + ':' + process.env.PATH;
+}
 
 const systemConfigPath = path.join(__dirname, 'system.config.json');
 const systemConfig = fs.existsSync(systemConfigPath) ? JSON.parse(fs.readFileSync(systemConfigPath, 'utf-8')) : {};
@@ -104,6 +120,17 @@ function saveEnvConfig() {
 
 const processes = new Map();
 
+// WebSocket clients per process: Map<processName, Set<WebSocket>>
+const wsClients = new Map();
+
+function broadcastPtyData(name, data) {
+  const clients = wsClients.get(name);
+  if (!clients || clients.size === 0) return;
+  for (const ws of clients) {
+    try { if (ws.readyState === 1) ws.send(data); } catch {}
+  }
+}
+
 function resolveTemplate(str) {
   if (!str) return str;
   return str.replace(/\{(\w+)\}/g, (match, key) => {
@@ -136,8 +163,19 @@ function getState(name) {
   };
 }
 
+let pty;
+try {
+  pty = require('node-pty-prebuilt-multiarch');
+} catch(e1) {
+  try {
+    pty = require('node-pty');
+  } catch(e2) {}
+}
+
 function appendLog(entry, source, data) {
-  const lines = data.toString().split('\n');
+  const rawData = data.toString();
+  const lines = rawData.split('\n');
+
   for (const line of lines) {
     if (line.length === 0) continue;
     entry.logs.push({ ts: Date.now(), source, text: line });
@@ -157,40 +195,84 @@ function startProcess(name) {
   const resolvedCwd = resolveTemplate(config.cwd);
   const resolvedArgs = (config.args || []).map(resolveTemplate);
 
-  const opts = {
-    stdio: ['ignore', 'pipe', 'pipe'],
-    env: { ...process.env, PYTHONUNBUFFERED: '1', ...envVars },
-  };
-  if (resolvedCwd) opts.cwd = resolvedCwd;
-
-  console.log(`[xpm] Spawning: ${config.command} ${JSON.stringify(resolvedArgs)} cwd=${resolvedCwd || '(none)'}`);
-  const proc = spawn(config.command, resolvedArgs, opts);
-
+  const env = { ...process.env, PYTHONUNBUFFERED: '1', ...envVars };
+  let proc;
   const entry = {
-    proc,
     status: 'running',
     logs: [{ ts: Date.now(), source: 'system', text: `Spawning: ${config.command} ${resolvedArgs.join(' ')}` }],
     startedAt: Date.now(),
     config,
   };
 
-  proc.stdout.on('data', (data) => appendLog(entry, 'stdout', data));
-  proc.stderr.on('data', (data) => appendLog(entry, 'stderr', data));
+  try {
+    if (pty && config.usePty) {
+      console.log(`[xpm] Spawning (pty): ${config.command} ${JSON.stringify(resolvedArgs)} cwd=${resolvedCwd || '(none)'}`);
+      proc = pty.spawn('/usr/bin/env', [config.command, ...resolvedArgs], {
+        name: 'xterm-256color',
+        cols: 100,
+        rows: 40,
+        cwd: resolvedCwd || process.cwd(),
+        env
+      });
 
-  proc.on('error', (err) => {
-    entry.status = 'errored';
-    appendLog(entry, 'system', `Process error: ${err.message}`);
-  });
+      entry.ptyProc = proc;  // Keep raw PTY ref for WebSocket resize/write
 
-  proc.on('close', (code) => {
-    if (entry.status !== 'stopping') {
-      entry.status = code === 0 ? 'stopped' : 'errored';
+      proc.onData((data) => {
+        appendLog(entry, 'stdout', data);
+        broadcastPtyData(name, data);
+      });
+
+      proc.onExit(({ exitCode }) => {
+        if (entry.status !== 'stopping') {
+          entry.status = exitCode === 0 ? 'stopped' : 'errored';
+        } else {
+          entry.status = 'stopped';
+        }
+        appendLog(entry, 'system', `Exited with code ${exitCode}`);
+        entry.proc = null;
+      });
     } else {
-      entry.status = 'stopped';
+      console.log(`[xpm] Spawning: ${config.command} ${JSON.stringify(resolvedArgs)} cwd=${resolvedCwd || '(none)'}`);
+      proc = spawn(config.command, resolvedArgs, {
+        stdio: ['pipe', 'pipe', 'pipe'],
+        cwd: resolvedCwd || undefined,
+        env
+      });
+
+      proc.stdout.on('data', (data) => appendLog(entry, 'stdout', data));
+      proc.stderr.on('data', (data) => appendLog(entry, 'stderr', data));
+
+      proc.on('error', (err) => {
+        entry.status = 'errored';
+        appendLog(entry, 'system', `Process error: ${err.message}`);
+      });
+
+      proc.on('close', (code) => {
+        if (entry.status !== 'stopping') {
+          entry.status = code === 0 ? 'stopped' : 'errored';
+        } else {
+          entry.status = 'stopped';
+        }
+        appendLog(entry, 'system', `Exited with code ${code}`);
+        entry.proc = null;
+      });
     }
-    appendLog(entry, 'system', `Exited with code ${code}`);
-    entry.proc = null;
-  });
+  } catch (err) {
+    entry.status = 'errored';
+    appendLog(entry, 'system', `Failed to start process: ${err.message}`);
+    processes.set(name, entry);
+    return { error: err.message };
+  }
+
+  // To support both pty.js (write) and child_process.spawn (stdin.write)
+  entry.proc = {
+    stdin: proc.stdin || {
+      write: (data) => proc.write(data),
+      destroyed: false
+    },
+    pid: proc.pid,
+    kill: (signal) => proc.kill(signal)
+  };
 
   processes.set(name, entry);
   return { ok: true };
@@ -242,6 +324,7 @@ app.get('/api/processes', (_req, res) => {
       cwd: config.cwd || null,
       resolvedCwd: resolvedCwd || null,
       branch: getGitBranch(resolvedCwd),
+      usePty: !!config.usePty,
       status: state.status,
       pid: state.pid,
       startedAt: state.startedAt,
@@ -265,6 +348,24 @@ app.get('/api/processes/:name/logs', (req, res) => {
   const state = getState(req.params.name);
   const logs = state.logs.filter((l) => l.ts > since);
   res.json(logs);
+});
+
+app.use(express.text());
+
+app.post('/api/processes/:name/stdin', (req, res) => {
+  const name = req.params.name;
+  const entry = processes.get(name);
+  if (!entry || entry.status !== 'running' || !entry.proc) {
+    return res.status(400).json({ error: `${name} is not running` });
+  }
+  if (!entry.proc.stdin || entry.proc.stdin.destroyed) {
+    return res.status(400).json({ error: `${name} stdin is not available` });
+  }
+  const input = req.body.input !== undefined ? req.body.input : (typeof req.body === 'string' ? req.body : '');
+  // Send exactly \r (Return key payload) because Raw mode drops \n and \r\n can confuse TUI prompts
+  entry.proc.stdin.write(input + '\r');
+  appendLog(entry, 'stdin', input);
+  res.json({ ok: true });
 });
 
 app.post('/api/processes/:name/start', (req, res) => {
@@ -334,6 +435,7 @@ app.post('/api/config/import', (req, res) => {
     const entry = { name: item.name, command: item.command, args: item.args || [], group: item.group || 'other' };
     if (item.cwd) entry.cwd = item.cwd;
     if (item.stopCommand) entry.stopCommand = item.stopCommand;
+    if (item.usePty !== undefined) entry.usePty = !!item.usePty;
     processConfigs.push(entry);
     added.push(item.name);
   }
@@ -342,7 +444,7 @@ app.post('/api/config/import', (req, res) => {
 });
 
 app.post('/api/config', (req, res) => {
-  const { name, command, args, cwd, group, stopCommand } = req.body;
+  const { name, command, args, cwd, group, stopCommand, usePty } = req.body;
   if (!name || !command) {
     return res.status(400).json({ error: 'name and command are required' });
   }
@@ -352,6 +454,7 @@ app.post('/api/config', (req, res) => {
   const entry = { name, command, args: args || [], group: group || 'other' };
   if (cwd) entry.cwd = cwd;
   if (stopCommand) entry.stopCommand = stopCommand;
+  if (usePty !== undefined) entry.usePty = !!usePty;
   processConfigs.push(entry);
   saveConfig();
   res.json({ ok: true });
@@ -371,7 +474,7 @@ app.put('/api/config/:name', (req, res) => {
   if (idx === -1) {
     return res.status(404).json({ error: `Process "${oldName}" not found` });
   }
-  const { name: newName, command, args, cwd, group, stopCommand } = req.body;
+  const { name: newName, command, args, cwd, group, stopCommand, usePty } = req.body;
   if (!command) {
     return res.status(400).json({ error: 'command is required' });
   }
@@ -382,6 +485,7 @@ app.put('/api/config/:name', (req, res) => {
   const updated = { name: finalName, command, args: args || [], group: group || 'other' };
   if (cwd) updated.cwd = cwd;
   if (stopCommand) updated.stopCommand = stopCommand;
+  if (usePty !== undefined) updated.usePty = !!usePty;
   processConfigs[idx] = updated;
   saveConfig();
 
@@ -485,6 +589,57 @@ app.put('/api/groups', (req, res) => {
   res.json({ ok: true });
 });
 
-app.listen(PORT, () => {
+// ── HTTP + WebSocket Server ─────────────────
+const server = http.createServer(app);
+const wss = new WebSocketServer({ server, path: '/ws/terminal' });
+
+wss.on('connection', (ws, req) => {
+  // Extract process name from query: /ws/terminal?name=<processName>
+  const url = new URL(req.url, `http://${req.headers.host}`);
+  const name = url.searchParams.get('name');
+  if (!name) { ws.close(1008, 'Missing name param'); return; }
+
+  const entry = processes.get(name);
+  if (!entry || !entry.ptyProc) { ws.close(1008, 'Not a PTY process'); return; }
+
+  // Register client
+  if (!wsClients.has(name)) wsClients.set(name, new Set());
+  wsClients.get(name).add(ws);
+
+  ws.on('error', () => {});  // Prevent unhandled error crashes
+
+  // Send buffered log text as a single batch so the terminal isn't blank on connect
+  if (entry.logs.length && ws.readyState === 1) {
+    try {
+      const batch = entry.logs.filter(l => l.source === 'stdout').map(l => l.text).join('');
+      ws.send(batch);
+    } catch {}
+  }
+
+  // Client → PTY (keyboard input + resize)
+  ws.on('message', (msg) => {
+    if (!entry.ptyProc) return;
+    try {
+      const parsed = JSON.parse(msg);
+      if (parsed.type === 'resize') {
+        entry.ptyProc.resize(
+          Math.min(parsed.cols, 300),
+          Math.min(parsed.rows, 100)
+        );
+      } else if (parsed.type === 'input') {
+        entry.ptyProc.write(parsed.data);
+      }
+    } catch {
+      entry.ptyProc.write(msg.toString());
+    }
+  });
+
+  ws.on('close', () => {
+    const set = wsClients.get(name);
+    if (set) { set.delete(ws); if (set.size === 0) wsClients.delete(name); }
+  });
+});
+
+server.listen(PORT, () => {
   console.log(`xprocessmanager running at http://localhost:${PORT}`);
 });

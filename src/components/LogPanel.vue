@@ -14,21 +14,41 @@
       <span style="font-size: 11px; color: var(--text-dim); margin-left: auto; margin-right: 12px">
         {{ lastRefresh }}
       </span>
+      <button class="btn-ghost" @click="$emit('clear')" style="margin-right: 4px">Clear</button>
       <button class="btn-ghost" @click="$emit('close')">Close</button>
     </div>
     <div ref="logBodyRef" class="log-body">
       <div
-        v-for="(entry, i) in logs"
+        v-for="(log, i) in logs"
         :key="i"
         class="log-line"
-        :class="entry.source"
-      >{{ entry.text }}</div>
+        :class="log.source"
+        v-html="formatAnsi(log.text)"
+      ></div>
+      <div v-if="!logs.length" class="log-line system">No logs available.</div>
+    </div>
+    <div class="stdin-input-row">
+      <input
+        v-model="stdinInput"
+        type="text"
+        class="stdin-input"
+        placeholder="Send input to process…"
+        @keydown.enter="sendStdin"
+      />
+      <button class="btn-stdin-send" @click="sendStdin">Send</button>
     </div>
   </div>
 </template>
 
 <script setup>
 import { ref } from 'vue'
+import { AnsiUp } from 'ansi_up'
+
+const ansiUp = new AnsiUp()
+function formatAnsi(text) {
+  if (!text) return ''
+  return ansiUp.ansi_to_html(text)
+}
 
 defineProps({
   selectedProcess: { type: String, default: null },
@@ -37,12 +57,19 @@ defineProps({
   panelHeight: { type: Number, default: 300 },
 })
 
-const emit = defineEmits(['close', 'resize'])
+const emit = defineEmits(['close', 'resize', 'clear', 'send-stdin'])
 
 const logBodyRef = ref(null)
 const dragging = ref(false)
+const stdinInput = ref('')
 
 defineExpose({ logBodyRef })
+
+function sendStdin() {
+  const text = stdinInput.value || ''
+  stdinInput.value = ''
+  emit('send-stdin', text)
+}
 
 function startDrag() {
   dragging.value = true

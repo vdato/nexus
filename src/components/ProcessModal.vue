@@ -33,6 +33,13 @@
           <option v-for="g in groupNames" :key="g" :value="g">{{ g }}</option>
         </select>
       </div>
+      <div class="form-group checkbox-group" style="display: flex; align-items: center; gap: 8px; margin-top: 16px;">
+        <input v-model="form.usePty" type="checkbox" id="usePty" style="width: auto" />
+        <label for="usePty" style="margin: 0; cursor: pointer;">Run in Interactive Terminal (TTY)</label>
+      </div>
+      <div class="hint" style="margin-top: -6px; margin-bottom: 12px; margin-left: 24px;">
+        Check this for interactive tools like <code>claude</code> that require a real terminal.
+      </div>
       <div class="modal-actions" style="justify-content: space-between">
         <div v-if="isEditing">
           <button class="btn-delete" @click="handleRemove">Remove Process</button>
@@ -67,6 +74,7 @@ const form = reactive({
   argsRaw: '',
   cwd: '',
   group: 'other',
+  usePty: false,
 })
 
 const resolvedCwd = ref(null)
@@ -88,6 +96,7 @@ watch(() => props.show, async (val) => {
     form.argsRaw = (config.args || []).join(' ')
     form.cwd = config.cwd || ''
     form.group = config.group || props.groupNames[0] || 'other'
+    form.usePty = !!config.usePty
     resolvedCwd.value = proc?.resolvedCwd || null
   } else {
     form.name = ''
@@ -95,6 +104,7 @@ watch(() => props.show, async (val) => {
     form.argsRaw = ''
     form.cwd = ''
     form.group = props.groupNames[0] || 'other'
+    form.usePty = false
   }
 })
 
@@ -116,6 +126,7 @@ function handleSubmit() {
     args: parseArgs(form.argsRaw.trim()),
     cwd: form.cwd.trim() || undefined,
     group: form.group,
+    usePty: form.usePty,
   }
   emit('submit', { data, isEditing: isEditing.value, editingName: props.editingName })
 }

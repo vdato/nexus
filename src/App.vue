@@ -1,20 +1,39 @@
 <template>
+  <div :class="{ compact: compactMode }">
   <AppHeader
     :counts="counts"
     :total="processStore.processes.value.length"
+    :compact="compactMode"
     @add-process="openAddModal"
     @start-all="processStore.startAll"
     @stop-all="processStore.stopAll"
     @open-settings="settingsStore.openSettings"
+    @toggle-compact="toggleCompact"
   />
+
+  <div class="floating-toolbar" :style="{ bottom: logStore.selectedProcess.value ? (logStore.logPanelHeight.value + 16) + 'px' : '' }">
+    <div class="toolbar-section">
+      <span class="toolbar-label">View</span>
+      <button class="toolbar-btn" :class="{ active: viewMode === 'group' }" @click="viewMode = 'group'">Group</button>
+      <button class="toolbar-btn" :class="{ active: viewMode === 'none' }" @click="viewMode = 'none'">None</button>
+    </div>
+    <div class="toolbar-divider"></div>
+    <div class="toolbar-section">
+      <span class="toolbar-label">Sort</span>
+      <button class="toolbar-btn" :class="{ active: sortBy === 'default' }" @click="sortBy = 'default'">Default</button>
+      <button class="toolbar-btn" :class="{ active: sortBy === 'name' }" @click="sortBy = 'name'">Name</button>
+      <button class="toolbar-btn" :class="{ active: sortBy === 'status' }" @click="sortBy = 'status'">Status</button>
+    </div>
+  </div>
 
   <div
     class="container"
     :style="{ paddingBottom: logStore.selectedProcess.value ? (logStore.logPanelHeight.value + 20) + 'px' : '' }"
   >
     <ProcessGrid
-      :sorted-groups="sortedGroups"
+      :sorted-groups="displayGroups"
       :color-map="colorMap"
+      :view-mode="viewMode"
       :selected-process="logStore.selectedProcess.value"
       @select="handleSelectLog"
       @start="handleStart"
@@ -23,6 +42,7 @@
       @edit="openEditModal"
       @hover-enter="popoverStore.onCardHoverEnter"
       @hover-leave="popoverStore.onCardHoverLeave"
+      @reorder="handleReorder"
     />
   </div>
 
@@ -34,9 +54,19 @@
     :style="popoverStore.popoverStyle.value"
     @cancel-hide="popoverStore.cancelPopoverHide"
     @schedule-hide="popoverStore.schedulePopoverHide"
+    @clear="popoverStore.clearPopoverLogs"
+  />
+
+  <XTermPanel
+    v-if="selectedIsPty"
+    :process-name="logStore.selectedProcess.value"
+    :panel-height="logStore.logPanelHeight.value"
+    @close="handleCloseLog"
+    @resize="logStore.applyLogPanelHeight"
   />
 
   <LogPanel
+    v-else
     ref="logPanelRef"
     :selected-process="logStore.selectedProcess.value"
     :logs="logStore.logs.value"
@@ -44,6 +74,8 @@
     :panel-height="logStore.logPanelHeight.value"
     @close="handleCloseLog"
     @resize="logStore.applyLogPanelHeight"
+    @clear="logStore.clearLogs"
+    @send-stdin="handleSendStdin"
   />
 
   <ProcessModal
@@ -55,6 +87,8 @@
     @submit="handleProcessSubmit"
     @remove="handleProcessRemove"
   />
+
+  </div>
 
   <SettingsModal
     :show="settingsStore.showSettingsModal.value"
@@ -80,6 +114,7 @@ import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 
 import AppHeader from './components/AppHeader.vue'
 import ProcessGrid from './components/ProcessGrid.vue'
+import XTermPanel from './components/XTermPanel.vue'
 import LogPanel from './components/LogPanel.vue'
 import LogPopover from './components/LogPopover.vue'
 import ProcessModal from './components/ProcessModal.vue'
@@ -91,6 +126,14 @@ import { usePopover } from './composables/usePopover.js'
 import { useSettings } from './composables/useSettings.js'
 import { api } from './composables/useApi.js'
 
+// ── Compact Mode ───────────────────────────
+const compactMode = ref(localStorage.getItem('xpm-compact') === '1')
+
+function toggleCompact() {
+  compactMode.value = !compactMode.value
+  localStorage.setItem('xpm-compact', compactMode.value ? '1' : '0')
+}
+
 // ── Stores ──────────────────────────────────
 const processStore = useProcesses()
 const logStore = useLogs()
@@ -98,6 +141,13 @@ const popoverStore = usePopover()
 const settingsStore = useSettings()
 
 // ── Computed ────────────────────────────────
+const selectedIsPty = computed(() => {
+  const name = logStore.selectedProcess.value
+  if (!name) return false
+  const proc = processStore.processes.value.find(p => p.name === name)
+  return proc?.usePty || false
+})
+
 const counts = computed(() => processStore.getCounts(processStore.processes.value))
 
 const sortedGroupsData = computed(() =>
@@ -106,6 +156,47 @@ const sortedGroupsData = computed(() =>
 
 const sortedGroups = computed(() => sortedGroupsData.value.sorted)
 const colorMap = computed(() => sortedGroupsData.value.colorMap)
+
+// ── View Mode & Sorting ────────────────────
+const viewMode = ref(localStorage.getItem('xpm-view') || 'group')
+const sortBy = ref(localStorage.getItem('xpm-sort') || 'default')
+const customOrder = ref(JSON.parse(localStorage.getItem('xpm-order') || '[]'))
+
+watch(viewMode, (v) => localStorage.setItem('xpm-view', v))
+watch(sortBy, (v) => localStorage.setItem('xpm-sort', v))
+
+const STATUS_PRIORITY = { running: 0, stopping: 1, errored: 2, stopped: 3 }
+
+function sortProcesses(procs) {
+  if (sortBy.value === 'name') {
+    return [...procs].sort((a, b) => a.name.localeCompare(b.name))
+  }
+  if (sortBy.value === 'status') {
+    return [...procs].sort((a, b) => (STATUS_PRIORITY[a.status] ?? 9) - (STATUS_PRIORITY[b.status] ?? 9) || a.name.localeCompare(b.name))
+  }
+  // default — use custom order if available
+  if (customOrder.value.length) {
+    const orderMap = new Map(customOrder.value.map((n, i) => [n, i]))
+    return [...procs].sort((a, b) => (orderMap.get(a.name) ?? 999) - (orderMap.get(b.name) ?? 999))
+  }
+  return procs
+}
+
+const displayGroups = computed(() => {
+  if (viewMode.value === 'none') {
+    // Flat list — all processes in one unnamed group
+    const all = sortedGroups.value.flatMap(([, items]) => items)
+    return [['', sortProcesses(all)]]
+  }
+  // Grouped — sort within each group
+  return sortedGroups.value.map(([group, items]) => [group, sortProcesses(items)])
+})
+
+function handleReorder(orderedNames) {
+  customOrder.value = orderedNames
+  localStorage.setItem('xpm-order', JSON.stringify(orderedNames))
+  if (sortBy.value !== 'default') sortBy.value = 'default'
+}
 
 const groupNames = computed(() => {
   const names = processStore.groupDefsToNames(processStore.groups.value)
@@ -155,7 +246,6 @@ async function handleProcessRemove(name) {
 // ── Process Actions ─────────────────────────
 async function handleStart(name) {
   await processStore.startProcess(name)
-  logStore.selectLog(name)
 }
 
 async function handleStop(name) {
@@ -164,7 +254,6 @@ async function handleStop(name) {
 
 async function handleRestart(name) {
   await processStore.restartProcess(name)
-  logStore.selectLog(name)
 }
 
 // ── Logs ────────────────────────────────────
@@ -178,6 +267,15 @@ function handleSelectLog(name) {
 
 function handleCloseLog() {
   logStore.closeLog()
+}
+
+async function handleSendStdin(text) {
+  if (!logStore.selectedProcess.value) return
+  await api(
+    `/api/processes/${encodeURIComponent(logStore.selectedProcess.value)}/stdin`,
+    'POST',
+    { input: text }
+  )
 }
 
 // ── Settings ────────────────────────────────

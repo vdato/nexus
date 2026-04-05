@@ -11,6 +11,14 @@ export default defineConfig({
         target: 'http://localhost:1338',
         changeOrigin: true,
       },
+      '/ws/terminal': {
+        target: 'http://localhost:1338',
+        ws: true,
+        changeOrigin: true,
+        on: {
+          error: () => {},
+        },
+      },
     },
   },
   build: {

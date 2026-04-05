@@ -10,9 +10,29 @@
       </div>
     </div>
     <div class="header-actions">
+      <button
+        class="btn-ghost btn-compact-toggle"
+        :class="{ active: compact }"
+        @click="$emit('toggle-compact')"
+        title="Toggle compact mode"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="3" y1="6" x2="21" y2="6"/>
+          <line x1="3" y1="12" x2="21" y2="12"/>
+          <line x1="3" y1="18" x2="21" y2="18"/>
+        </svg>
+      </button>
       <button class="btn-ghost" @click="$emit('add-process')">+ Add Process</button>
-      <button class="btn-start" @click="$emit('start-all')">Start All</button>
-      <button class="btn-stop" @click="$emit('stop-all')">Stop All</button>
+      <button class="btn-start btn-icon" @click="$emit('start-all')" title="Start All">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+          <polygon points="5,3 19,12 5,21"/>
+        </svg>
+      </button>
+      <button class="btn-stop btn-icon" @click="$emit('stop-all')" title="Stop All">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+          <rect x="4" y="4" width="16" height="16" rx="2"/>
+        </svg>
+      </button>
       <button
         type="button"
         class="btn-ghost btn-settings-icon"
@@ -33,7 +53,8 @@
 defineProps({
   counts: { type: Object, required: true },
   total: { type: Number, required: true },
+  compact: { type: Boolean, default: false },
 })
 
-defineEmits(['add-process', 'start-all', 'stop-all', 'open-settings'])
+defineEmits(['add-process', 'start-all', 'stop-all', 'open-settings', 'toggle-compact'])
 </script>

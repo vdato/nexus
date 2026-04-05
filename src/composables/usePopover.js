@@ -142,6 +142,11 @@ export function usePopover() {
     hideLogPopover()
   })
 
+  function clearPopoverLogs() {
+    popoverLogs.value = []
+    popoverSince = Date.now()
+  }
+
   return {
     popoverVisible,
     popoverName,
@@ -150,6 +155,7 @@ export function usePopover() {
     setPopoverEl,
     setPopoverPollInterval,
     hideLogPopover,
+    clearPopoverLogs,
     schedulePopoverHide,
     cancelPopoverHide,
     onCardHoverEnter,

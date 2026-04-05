@@ -82,6 +82,11 @@ export function useLogs() {
 
   onUnmounted(stopLogPolling)
 
+  function clearLogs() {
+    logs.value = []
+    logSince = Date.now()
+  }
+
   return {
     selectedProcess,
     logs,
@@ -92,6 +97,7 @@ export function useLogs() {
     fetchLogs,
     selectLog,
     closeLog,
+    clearLogs,
     onLogScroll,
     applyLogPanelHeight,
     startLogPolling,

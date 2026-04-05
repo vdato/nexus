@@ -3,3 +3,5 @@ dist
 *.local
 public/index.html.bak
 *.config.json
+processes.config.json
+env.config.json

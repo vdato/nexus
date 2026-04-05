@@ -12,7 +12,19 @@
     "color": "#34d399"
   },
   {
-    "name": "agents",
+    "name": "qa",
+    "color": "#ff0000"
+  },
+  {
+    "name": "devs",
+    "color": "#001eff"
+  },
+  {
+    "name": "analyst",
+    "color": "#eb8aff"
+  },
+  {
+    "name": "design",
     "color": "#888888"
   }
 ]
