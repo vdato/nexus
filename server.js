@@ -118,6 +118,7 @@ function getGitBranch(cwd) {
       cwd,
       encoding: 'utf-8',
       timeout: 3000,
+      stdio: ['ignore', 'pipe', 'ignore'], // suppress stderr for non-git working directories
     }).trim();
   } catch {
     return null;
