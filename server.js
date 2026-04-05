@@ -8,7 +8,7 @@ const systemConfigPath = path.join(__dirname, 'system.config.json');
 const systemConfig = fs.existsSync(systemConfigPath) ? JSON.parse(fs.readFileSync(systemConfigPath, 'utf-8')) : {};
 
 const app = express();
-const PORT = systemConfig.port || 1337;
+const PORT = parseInt(process.env.PORT) || systemConfig.port || 1337;
 const MAX_LOG_LINES = systemConfig.maxLogLines || 500;
 
 const configPath = path.join(__dirname, 'processes.config.json');
@@ -224,7 +224,10 @@ function stopProcess(name) {
   return { ok: true };
 }
 
-app.use(express.static(path.join(__dirname, 'public')));
+// Serve Vue build output from dist/, fall back to legacy public/
+const distDir = path.join(__dirname, 'dist');
+const publicDir = path.join(__dirname, 'public');
+app.use(express.static(fs.existsSync(distDir) ? distDir : publicDir));
 app.use(express.json());
 
 app.get('/api/processes', (_req, res) => {

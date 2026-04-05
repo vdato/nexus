@@ -5,10 +5,19 @@
   "description": "Local process manager dashboard for Corebridge services",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "build-start": "vite build && node server.js",
+    "dev": "PORT=1338 node server.js & vite; kill $!",
+    "build": "vite build",
+    "preview": "vite preview"
   },
   "dependencies": {
     "express": "^4.21.0",
-    "tree-kill": "^1.2.2"
+    "tree-kill": "^1.2.2",
+    "vue": "^3.5.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.0.0",
+    "vite": "^6.0.0"
   }
 }
