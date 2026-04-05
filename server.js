@@ -12,7 +12,7 @@ const PORT = parseInt(process.env.PORT) || systemConfig.port || 1337;
 const MAX_LOG_LINES = systemConfig.maxLogLines || 500;
 
 const configPath = path.join(__dirname, 'processes.config.json');
-let processConfigs = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+let processConfigs = fs.existsSync(configPath) ? JSON.parse(fs.readFileSync(configPath, 'utf-8')) : [];
 
 const envConfigPath = path.join(__dirname, 'env.config.json');
 let envVars = {};
