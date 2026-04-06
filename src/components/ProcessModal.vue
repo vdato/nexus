@@ -13,7 +13,7 @@
       <div class="form-group">
         <label>Arguments</label>
         <input v-model="form.argsRaw" type="text" placeholder="start_server.ps1  (space-separated)" />
-        <div class="hint">Space-separated. Supports {ENV_KEY} templates</div>
+        <div class="hint">Space-separated. Quote paths with spaces: "path/with spaces/file.sh". Supports {ENV_KEY} templates</div>
       </div>
       <div class="form-group">
         <label>Working Directory</label>

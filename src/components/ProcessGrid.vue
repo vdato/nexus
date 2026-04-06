@@ -46,10 +46,15 @@ const dragName = ref(null)
 const dragOverName = ref(null)
 
 function onDragStart(name, ev) {
+  // Don't drag when interacting with terminal, log body, or input areas
+  const src = ev.target
+  if (src.closest('.card-xterm-container, .card-log-body, .xterm, .stdin-input-row')) {
+    ev.preventDefault()
+    return
+  }
   dragName.value = name
   ev.dataTransfer.effectAllowed = 'move'
   ev.dataTransfer.setData('text/plain', name)
-  // Make the dragged card semi-transparent
   requestAnimationFrame(() => {
     if (ev.target) ev.target.style.opacity = '0.4'
   })

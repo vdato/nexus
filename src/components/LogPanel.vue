@@ -41,7 +41,7 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, watch, nextTick } from 'vue'
 import { AnsiUp } from 'ansi_up'
 
 const ansiUp = new AnsiUp()
@@ -50,7 +50,7 @@ function formatAnsi(text) {
   return ansiUp.ansi_to_html(text)
 }
 
-defineProps({
+const props = defineProps({
   selectedProcess: { type: String, default: null },
   logs: { type: Array, required: true },
   lastRefresh: { type: String, default: '' },
@@ -64,6 +64,14 @@ const dragging = ref(false)
 const stdinInput = ref('')
 
 defineExpose({ logBodyRef })
+
+watch(() => props.logs, () => {
+  nextTick(() => {
+    if (logBodyRef.value) {
+      logBodyRef.value.scrollTop = logBodyRef.value.scrollHeight
+    }
+  })
+}, { deep: true })
 
 function sendStdin() {
   const text = stdinInput.value || ''

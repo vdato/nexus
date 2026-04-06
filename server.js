@@ -172,13 +172,42 @@ try {
   } catch(e2) {}
 }
 
+const { stripVTControlCharacters } = require('util');
+
+function cleanAnsiLog(line) {
+  // 1. Handle carriage returns properly. Take the final state in this line segment.
+  const segments = line.split('\r');
+  let text = segments[segments.length - 1];
+  
+  // 2. Strip non-color ANSI sequences (CSI sequences ending in A-L or N-Z etc.)
+  // Keep sequences ending in 'm' (SGR)
+  return text.replace(/\x1b\[[0-9;]*([A-LN-Z])/g, '');
+}
+
 function appendLog(entry, source, data) {
   const rawData = data.toString();
+  // Split raw stream by newline
   const lines = rawData.split('\n');
-
+  
   for (const line of lines) {
     if (line.length === 0) continue;
-    entry.logs.push({ ts: Date.now(), source, text: line });
+
+    // Clean the line (handle overwrites and strip movement codes)
+    const cleanedLine = cleanAnsiLog(line);
+    const visibleText = stripVTControlCharacters(cleanedLine).trim();
+    
+    // Drop single spinner characters or empty lines that spam raw logs
+    const spinners = ['✻', '◐', '◓', '◑', '◒', '...', '⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+    if (spinners.includes(visibleText)) continue;
+    
+    // De-duplicate if the last log is identical (anti-spam for redraws)
+    const lastLog = entry.logs[entry.logs.length - 1];
+    if (lastLog && stripVTControlCharacters(lastLog.text).trim() === visibleText && lastLog.source === source) {
+      continue;
+    }
+    
+    // Push the line with preserved colors to Vue
+    entry.logs.push({ ts: Date.now(), source, text: cleanedLine });
     if (entry.logs.length > MAX_LOG_LINES) entry.logs.shift();
   }
 }
