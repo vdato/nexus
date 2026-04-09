@@ -3,24 +3,24 @@
     class="card"
     :class="{ selected: isSelected, expanded }"
     :style="{ borderColor, '--card-color': borderColor }"
-    @click="$emit('select', process.name)"
-    @mouseenter="!expanded && $emit('hover-enter', process.name, $event.currentTarget)"
+    @click="$emit('select', node.name)"
+    @mouseenter="!expanded && $emit('hover-enter', node.name, $event.currentTarget)"
     @mouseleave="!expanded && $emit('hover-leave')"
   >
     <div class="card-header">
       <div class="card-name">
-        <span class="status-dot" :class="process.status"></span>
-        {{ process.name }}
+        <i :class="[typeIcon, 'node-type-icon', node.status]" :title="node.type"></i>
+        {{ node.name }}
       </div>
       <div class="card-actions">
-        <template v-if="process.status === 'running'">
-          <button class="btn-stop btn-icon" @click.stop="$emit('stop', process.name)" title="Stop"><i class="fa-solid fa-stop"></i></button>
-          <button class="btn-restart btn-icon" @click.stop="$emit('restart', process.name)" title="Restart"><i class="fa-solid fa-rotate-right"></i></button>
+        <template v-if="node.status === 'running'">
+          <button class="btn-stop btn-icon" @click.stop="$emit('stop', node.name)" title="Stop"><i class="fa-solid fa-stop"></i></button>
+          <button class="btn-restart btn-icon" @click.stop="$emit('restart', node.name)" title="Restart"><i class="fa-solid fa-rotate-right"></i></button>
         </template>
         <template v-else>
-          <button class="btn-start btn-icon" @click.stop="$emit('start', process.name)" title="Start"><i class="fa-solid fa-play"></i></button>
+          <button class="btn-start btn-icon" @click.stop="$emit('start', node.name)" title="Start"><i class="fa-solid fa-play"></i></button>
         </template>
-        <button class="btn-gear" @click.stop="$emit('edit', process.name)">
+        <button class="btn-gear" @click.stop="$emit('edit', node.name)">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="3"/>
             <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
@@ -29,8 +29,8 @@
       </div>
     </div>
     <div class="card-meta">
-      <div v-if="process.branch" class="branch-tag-group" @click.stop>
-        <span class="branch-tag" @click.stop="$emit('branch-click', process.name)">{{ process.branch }}</span>
+      <div v-if="node.branch" class="branch-tag-group" @click.stop>
+        <span class="branch-tag" @click.stop="$emit('branch-click', node.name)">{{ node.branch }}</span>
         <button
           class="btn-git-action btn-refresh"
           :class="{ spinning: gitRemoteStatus === 'checking' }"
@@ -49,18 +49,18 @@
         </button>
       </div>
       <div class="card-meta-info">
-        <span title="PID"><i class="fa-solid fa-hashtag mr-1"></i>{{ process.pid || '-' }}</span>
+        <span title="PID"><i class="fa-solid fa-hashtag mr-1"></i>{{ node.pid || '-' }}</span>
         <span title="Uptime"><i class="fa-regular fa-clock mr-1"></i>{{ uptime }}</span>
       </div>
     </div>
 
     <!-- Inline Log Tray -->
     <div v-if="expanded" class="card-log-tray" @click.stop>
-      <!-- xterm.js for PTY processes -->
-      <div v-if="process.usePty" ref="xtermContainerRef" class="card-xterm-container" @click="focusTerminal"></div>
+      <!-- xterm.js for PTY nodes -->
+      <div v-if="node.usePty" ref="xtermContainerRef" class="card-xterm-container" @click="focusTerminal"></div>
 
-      <!-- HTML logs for non-PTY processes -->
-      <div v-if="!process.usePty" ref="logTrayBody" class="card-log-body">
+      <!-- HTML logs for non-PTY nodes -->
+      <div v-if="!node.usePty" ref="logTrayBody" class="card-log-body">
         <div
           v-for="(entry, i) in cardLogs"
           :key="i"
@@ -103,7 +103,7 @@ function formatAnsi(text) {
 }
 
 const props = defineProps({
-  process: { type: Object, required: true },
+  node: { type: Object, required: true },
   borderColor: { type: String, default: '#2e3144' },
   isSelected: { type: Boolean, default: false },
 })
@@ -136,9 +136,18 @@ function formatUptime(ms) {
   return `${h}h ${m % 60}m`
 }
 
+const TYPE_ICONS = {
+  service: 'fa-solid fa-server',
+  agent: 'fa-solid fa-robot',
+  desk: 'fa-solid fa-desktop',
+  script: 'fa-solid fa-scroll',
+}
+
+const typeIcon = computed(() => TYPE_ICONS[props.node.type] || 'fa-solid fa-circle')
+
 const uptime = computed(() => {
-  if (props.process.status === 'running' && props.process.startedAt) {
-    return formatUptime(Date.now() - props.process.startedAt)
+  if (props.node.status === 'running' && props.node.startedAt) {
+    return formatUptime(Date.now() - props.node.startedAt)
   }
   return '-'
 })
@@ -245,7 +254,7 @@ function disconnectWs() {
 // ── HTML logs for non-PTY ──────────────────
 async function fetchCardLogs() {
   const logs = await api(
-    `/api/processes/${encodeURIComponent(props.process.name)}/logs?since=${logSince}`
+    `/api/processes/${encodeURIComponent(props.node.name)}/logs?since=${logSince}`
   )
   if (!Array.isArray(logs)) return
 
@@ -282,10 +291,10 @@ async function toggleExpand() {
   emit('hover-leave')
   expanded.value = !expanded.value
   if (expanded.value) {
-    if (props.process.usePty) {
+    if (props.node.usePty) {
       await nextTick()
       createCardTerminal()
-      connectWs(props.process.name)
+      connectWs(props.node.name)
     } else {
       logSince = 0
       cardLogs.value = []
@@ -302,7 +311,7 @@ async function toggleExpand() {
 async function checkGitStatus() {
   gitRemoteStatus.value = 'checking'
   try {
-    const res = await api(`/api/processes/${encodeURIComponent(props.process.name)}/git/remote-status`, 'POST')
+    const res = await api(`/api/processes/${encodeURIComponent(props.node.name)}/git/remote-status`, 'POST')
     gitRemoteStatus.value = res.status
   } catch (err) {
     console.error('Failed to check git status:', err)
@@ -313,7 +322,7 @@ async function checkGitStatus() {
 async function pullGitChanges() {
   gitRemoteStatus.value = 'checking'
   try {
-    const res = await api(`/api/processes/${encodeURIComponent(props.process.name)}/git/pull`, 'POST')
+    const res = await api(`/api/processes/${encodeURIComponent(props.node.name)}/git/pull`, 'POST')
     if (res.ok) {
       await checkGitStatus()
     } else {

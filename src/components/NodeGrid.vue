@@ -21,13 +21,13 @@
         ><i class="fa-solid fa-grip-vertical"></i></span>
         {{ group }}
       </div>
-      <div class="process-grid">
-        <ProcessCard
+      <div class="node-grid">
+        <NodeCard
           v-for="p in items"
           :key="p.name"
-          :process="p"
+          :node="p"
           :border-color="colorMap[p.group || 'other'] || '#4b5563'"
-          :is-selected="selectedProcess === p.name"
+          :is-selected="selectedNode === p.name"
           draggable="true"
           @dragstart="onDragStart(p.name, $event)"
           @dragover.prevent="onDragOver(p.name, $event)"
@@ -50,12 +50,12 @@
 
 <script setup>
 import { ref } from 'vue'
-import ProcessCard from './ProcessCard.vue'
+import NodeCard from './NodeCard.vue'
 
 const props = defineProps({
   sortedGroups: { type: Array, required: true },
   colorMap: { type: Object, required: true },
-  selectedProcess: { type: String, default: null },
+  selectedNode: { type: String, default: null },
   viewMode: { type: String, default: 'group' },
 })
 
@@ -92,7 +92,7 @@ function onDragEnd(ev) {
   cardDragOverGroup.value = null
 }
 
-function findProcessGroup(name) {
+function findNodeGroup(name) {
   for (const [group, items] of props.sortedGroups) {
     if (items.some(p => p.name === name)) return group
   }
@@ -103,8 +103,8 @@ function onDrop(targetName) {
   const sourceName = dragName.value
   if (!sourceName || sourceName === targetName) return
 
-  const sourceGroup = findProcessGroup(sourceName)
-  const targetGroup = findProcessGroup(targetName)
+  const sourceGroup = findNodeGroup(sourceName)
+  const targetGroup = findNodeGroup(targetName)
 
   // Cross-group: move process to the target's group
   if (sourceGroup !== targetGroup && targetGroup) {
@@ -155,7 +155,7 @@ function onGroupHeaderDrop(gi, group) {
   // Card dropped onto group header
   if (dragName.value) {
     const sourceName = dragName.value
-    const sourceGroup = findProcessGroup(sourceName)
+    const sourceGroup = findNodeGroup(sourceName)
     if (sourceGroup !== group) {
       emit('move-to-group', { name: sourceName, group })
     }

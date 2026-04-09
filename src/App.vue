@@ -1,14 +1,14 @@
 <template>
   <AppHeader
     :counts="counts"
-    :total="processStore.processes.value.length"
-    @add-process="openAddModal"
-    @start-all="processStore.startAll"
-    @stop-all="processStore.stopAll"
+    :total="nodeStore.nodes.value.length"
+    @add-node="openAddModal"
+    @start-all="nodeStore.startAll"
+    @stop-all="nodeStore.stopAll"
     @open-settings="settingsStore.openSettings"
   />
 
-  <div class="floating-toolbar" :style="{ bottom: logStore.selectedProcess.value ? (logStore.logPanelHeight.value + 16) + 'px' : '' }">
+  <div class="floating-toolbar" :style="{ bottom: logStore.selectedNode.value ? (logStore.logPanelHeight.value + 16) + 'px' : '' }">
     <div class="toolbar-section">
       <span class="toolbar-label">View</span>
       <button class="toolbar-btn" :class="{ active: viewMode === 'group' }" @click="viewMode = 'group'">Group</button>
@@ -25,13 +25,13 @@
 
   <div
     class="container"
-    :style="{ paddingBottom: logStore.selectedProcess.value ? (logStore.logPanelHeight.value + 20) + 'px' : '' }"
+    :style="{ paddingBottom: logStore.selectedNode.value ? (logStore.logPanelHeight.value + 20) + 'px' : '' }"
   >
-    <ProcessGrid
+    <NodeGrid
       :sorted-groups="displayGroups"
       :color-map="colorMap"
       :view-mode="viewMode"
-      :selected-process="logStore.selectedProcess.value"
+      :selected-node="logStore.selectedNode.value"
       @select="handleSelectLog"
       @start="handleStart"
       @stop="handleStop"
@@ -59,7 +59,7 @@
 
   <XTermPanel
     v-if="selectedIsPty"
-    :process-name="logStore.selectedProcess.value"
+    :node-name="logStore.selectedNode.value"
     :panel-height="logStore.logPanelHeight.value"
     @close="handleCloseLog"
     @resize="logStore.applyLogPanelHeight"
@@ -68,7 +68,7 @@
   <LogPanel
     v-else
     ref="logPanelRef"
-    :selected-process="logStore.selectedProcess.value"
+    :selected-node="logStore.selectedNode.value"
     :logs="logStore.logs.value"
     :last-refresh="logStore.lastRefresh.value"
     :panel-height="logStore.logPanelHeight.value"
@@ -78,19 +78,19 @@
     @send-stdin="handleSendStdin"
   />
 
-  <ProcessModal
-    :show="showProcessModal"
-    :editing-name="editingProcessName"
+  <NodeModal
+    :show="showNodeModal"
+    :editing-name="editingNodeName"
     :group-names="groupNames"
-    :processes="processStore.processes.value"
-    @close="closeProcessModal"
-    @submit="handleProcessSubmit"
-    @remove="handleProcessRemove"
+    :nodes="nodeStore.nodes.value"
+    @close="closeNodeModal"
+    @submit="handleNodeSubmit"
+    @remove="handleNodeRemove"
   />
 
   <BranchModal
     :show="branchModalStore.show"
-    :process-name="branchModalStore.processName"
+    :node-name="branchModalStore.nodeName"
     :branches="branchModalStore.branches"
     :current-branch="branchModalStore.currentBranch"
     :loading="branchModalStore.loading"
@@ -127,16 +127,16 @@
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 
 import AppHeader from './components/AppHeader.vue'
-import ProcessGrid from './components/ProcessGrid.vue'
+import NodeGrid from './components/NodeGrid.vue'
 import XTermPanel from './components/XTermPanel.vue'
 import LogPanel from './components/LogPanel.vue'
 import LogPopover from './components/LogPopover.vue'
-import ProcessModal from './components/ProcessModal.vue'
+import NodeModal from './components/NodeModal.vue'
 import SettingsModal from './components/SettingsModal.vue'
 import BranchModal from './components/BranchModal.vue'
 import AlertModal from './components/AlertModal.vue'
 
-import { useProcesses } from './composables/useProcesses.js'
+import { useNodes } from './composables/useNodes.js'
 import { useLogs } from './composables/useLogs.js'
 import { usePopover } from './composables/usePopover.js'
 import { useSettings } from './composables/useSettings.js'
@@ -146,7 +146,7 @@ import { api } from './composables/useApi.js'
 
 
 // ── Stores ──────────────────────────────────
-const processStore = useProcesses()
+const nodeStore = useNodes()
 const logStore = useLogs()
 const popoverStore = usePopover()
 const settingsStore = useSettings()
@@ -154,16 +154,16 @@ const { showAlert } = useAlert()
 
 // ── Computed ────────────────────────────────
 const selectedIsPty = computed(() => {
-  const name = logStore.selectedProcess.value
+  const name = logStore.selectedNode.value
   if (!name) return false
-  const proc = processStore.processes.value.find(p => p.name === name)
-  return proc?.usePty || false
+  const nd = nodeStore.nodes.value.find(p => p.name === name)
+  return nd?.usePty || false
 })
 
-const counts = computed(() => processStore.getCounts(processStore.processes.value))
+const counts = computed(() => nodeStore.getCounts(nodeStore.nodes.value))
 
 const sortedGroupsData = computed(() =>
-  processStore.buildSortedGroups(processStore.processes.value, processStore.groups.value)
+  nodeStore.buildSortedGroups(nodeStore.nodes.value, nodeStore.groups.value)
 )
 
 const sortedGroups = computed(() => sortedGroupsData.value.sorted)
@@ -179,29 +179,29 @@ watch(sortBy, (v) => localStorage.setItem('xpm-sort', v))
 
 const STATUS_PRIORITY = { running: 0, stopping: 1, errored: 2, stopped: 3 }
 
-function sortProcesses(procs) {
+function sortNodes(items) {
   if (sortBy.value === 'name') {
-    return [...procs].sort((a, b) => a.name.localeCompare(b.name))
+    return [...items].sort((a, b) => a.name.localeCompare(b.name))
   }
   if (sortBy.value === 'status') {
-    return [...procs].sort((a, b) => (STATUS_PRIORITY[a.status] ?? 9) - (STATUS_PRIORITY[b.status] ?? 9) || a.name.localeCompare(b.name))
+    return [...items].sort((a, b) => (STATUS_PRIORITY[a.status] ?? 9) - (STATUS_PRIORITY[b.status] ?? 9) || a.name.localeCompare(b.name))
   }
   // default — use custom order if available
   if (customOrder.value.length) {
     const orderMap = new Map(customOrder.value.map((n, i) => [n, i]))
-    return [...procs].sort((a, b) => (orderMap.get(a.name) ?? 999) - (orderMap.get(b.name) ?? 999))
+    return [...items].sort((a, b) => (orderMap.get(a.name) ?? 999) - (orderMap.get(b.name) ?? 999))
   }
-  return procs
+  return items
 }
 
 const displayGroups = computed(() => {
   if (viewMode.value === 'none') {
-    // Flat list — all processes in one unnamed group
+    // Flat list — all nodes in one unnamed group
     const all = sortedGroups.value.flatMap(([, items]) => items)
-    return [['', sortProcesses(all)]]
+    return [['', sortNodes(all)]]
   }
   // Grouped — sort within each group
-  return sortedGroups.value.map(([group, items]) => [group, sortProcesses(items)])
+  return sortedGroups.value.map(([group, items]) => [group, sortNodes(items)])
 })
 
 function handleReorder(orderedNames) {
@@ -211,86 +211,86 @@ function handleReorder(orderedNames) {
 }
 
 async function handleMoveToGroup({ name, group }) {
-  const config = await processStore.getProcessConfig(name)
+  const config = await nodeStore.getNodeConfig(name)
   if (config.error) return
-  await processStore.updateProcess(name, { ...config, group })
+  await nodeStore.updateNode(name, { ...config, group })
 }
 
 async function handleReorderGroups(groupNames) {
   // Rebuild groups list with existing colors in the new order
-  const currentGroups = processStore.groups.value
+  const currentGroups = nodeStore.groups.value
   const reordered = groupNames.map((name) => {
     const existing = currentGroups.find((g) => (typeof g === 'string' ? g : g.name) === name)
     if (existing && typeof existing === 'object') return existing
     return { name, color: '#888888' }
   })
   await api('/api/groups', 'PUT', reordered)
-  await processStore.refresh(true)
+  await nodeStore.refresh(true)
 }
 
 const groupNames = computed(() => {
-  const names = processStore.groupDefsToNames(processStore.groups.value)
+  const names = nodeStore.groupDefsToNames(nodeStore.groups.value)
   return names.length ? names : ['other']
 })
 
-// ── Process Modal ───────────────────────────
-const showProcessModal = ref(false)
-const editingProcessName = ref(null)
+// ── Node Modal ─────────────────────────────
+const showNodeModal = ref(false)
+const editingNodeName = ref(null)
 
 function openAddModal() {
-  editingProcessName.value = null
-  showProcessModal.value = true
+  editingNodeName.value = null
+  showNodeModal.value = true
 }
 
 function openEditModal(name) {
-  editingProcessName.value = name
-  showProcessModal.value = true
+  editingNodeName.value = name
+  showNodeModal.value = true
 }
 
-function closeProcessModal() {
-  showProcessModal.value = false
-  editingProcessName.value = null
+function closeNodeModal() {
+  showNodeModal.value = false
+  editingNodeName.value = null
 }
 
-async function handleProcessSubmit({ data, isEditing, editingName }) {
+async function handleNodeSubmit({ data, isEditing, editingName }) {
   let success
   if (isEditing) {
-    success = await processStore.updateProcess(editingName, data)
-    if (success && data.name !== editingName && logStore.selectedProcess.value === editingName) {
-      logStore.selectedProcess.value = data.name
+    success = await nodeStore.updateNode(editingName, data)
+    if (success && data.name !== editingName && logStore.selectedNode.value === editingName) {
+      logStore.selectedNode.value = data.name
     }
   } else {
-    success = await processStore.addProcess(data)
+    success = await nodeStore.addNode(data)
   }
-  if (success) closeProcessModal()
+  if (success) closeNodeModal()
 }
 
-async function handleProcessRemove(name) {
-  const removed = await processStore.removeProcess(name)
+async function handleNodeRemove(name) {
+  const removed = await nodeStore.removeNode(name)
   if (removed) {
-    if (logStore.selectedProcess.value === name) logStore.closeLog()
-    closeProcessModal()
+    if (logStore.selectedNode.value === name) logStore.closeLog()
+    closeNodeModal()
   }
 }
 
-// ── Process Actions ─────────────────────────
+// ── Node Actions ───────────────────────────
 async function handleStart(name) {
-  await processStore.startProcess(name)
+  await nodeStore.startNode(name)
 }
 
 async function handleStop(name) {
-  await processStore.stopProcess(name)
+  await nodeStore.stopNode(name)
 }
 
 async function handleRestart(name) {
-  await processStore.restartProcess(name)
+  await nodeStore.restartNode(name)
 }
 
 // ── Branch Modal ────────────────────────────
 import { reactive } from 'vue'
 const branchModalStore = reactive({
   show: false,
-  processName: null,
+  nodeName: null,
   branches: [],
   currentBranch: null,
   loading: false,
@@ -298,13 +298,13 @@ const branchModalStore = reactive({
 })
 
 async function openBranchModal(name) {
-  branchModalStore.processName = name
+  branchModalStore.nodeName = name
   branchModalStore.branches = []
   branchModalStore.currentBranch = null
   branchModalStore.error = null
   branchModalStore.loading = true
   branchModalStore.show = true
-  
+
   const res = await api(`/api/processes/${name}/git/branches`)
   branchModalStore.loading = false
   if (res.error) {
@@ -317,12 +317,12 @@ async function openBranchModal(name) {
 
 function closeBranchModal() {
   branchModalStore.show = false
-  branchModalStore.processName = null
+  branchModalStore.nodeName = null
 }
 
 async function handleCheckoutBranch(branch) {
-  if (!branchModalStore.processName) return
-  const name = branchModalStore.processName
+  if (!branchModalStore.nodeName) return
+  const name = branchModalStore.nodeName
   branchModalStore.loading = true
   const res = await api(`/api/processes/${name}/git/checkout`, 'POST', { branch })
   branchModalStore.loading = false
@@ -331,7 +331,7 @@ async function handleCheckoutBranch(branch) {
     return
   }
   closeBranchModal()
-  await processStore.refresh(true)
+  await nodeStore.refresh(true)
 }
 
 // ── Logs ────────────────────────────────────
@@ -348,9 +348,9 @@ function handleCloseLog() {
 }
 
 async function handleSendStdin(text) {
-  if (!logStore.selectedProcess.value) return
+  if (!logStore.selectedNode.value) return
   await api(
-    `/api/processes/${encodeURIComponent(logStore.selectedProcess.value)}/stdin`,
+    `/api/processes/${encodeURIComponent(logStore.selectedNode.value)}/stdin`,
     'POST',
     { input: text }
   )
@@ -361,14 +361,14 @@ async function handleSaveSettings() {
   const sysUpdate = await settingsStore.saveSettings()
   if (sysUpdate) {
     await applyPollIntervals(sysUpdate)
-    await processStore.refresh(true)
+    await nodeStore.refresh(true)
   }
 }
 
 async function handleImport(file) {
   const result = await settingsStore.handleImport(file)
   if (result) {
-    await processStore.refresh(true)
+    await nodeStore.refresh(true)
   }
 }
 
@@ -376,9 +376,9 @@ async function handleImport(file) {
 async function applyPollIntervals(sys) {
   if (!sys) sys = await api('/api/system')
   popoverStore.setPopoverPollInterval(sys.popoverPollInterval || 1500)
-  processStore.stopPolling()
+  nodeStore.stopPolling()
   logStore.stopLogPolling()
-  processStore.startPolling(sys.statusPollInterval || 3000)
+  nodeStore.startPolling(sys.statusPollInterval || 3000)
   logStore.startLogPolling(sys.logPollInterval || 500)
 }
 
@@ -398,8 +398,8 @@ watch(logPanelRef, (comp) => {
   })
 }, { immediate: true })
 
-// Also watch when selectedProcess changes to re-wire the log body scroll
-watch(() => logStore.selectedProcess.value, () => {
+// Also watch when selectedNode changes to re-wire the log body scroll
+watch(() => logStore.selectedNode.value, () => {
   nextTick(() => {
     if (logPanelRef.value?.logBodyRef) {
       logStore.setLogBodyEl(logPanelRef.value.logBodyRef)
@@ -414,14 +414,14 @@ function onResize() {
 
 // ── Lifecycle ───────────────────────────────
 onMounted(async () => {
-  await processStore.refresh()
+  await nodeStore.refresh()
   await applyPollIntervals()
   window.addEventListener('resize', onResize)
 })
 
 onUnmounted(() => {
   window.removeEventListener('resize', onResize)
-  processStore.stopPolling()
+  nodeStore.stopPolling()
   logStore.stopLogPolling()
 })
 </script>

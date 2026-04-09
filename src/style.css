@@ -18,6 +18,7 @@
   --yellow: #fbbf24;
   --blue: #60a5fa;
   --purple: #a78bfa;
+  --dim: var(--text-dim);
 }
 
 body {
@@ -243,7 +244,7 @@ button:active {
   margin-left: -6px;
 }
 
-.process-grid {
+.node-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
   gap: 10px;
@@ -290,30 +291,38 @@ button:active {
   color: var(--card-color, var(--text));
 }
 
-.status-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  display: inline-block;
+.node-type-icon {
+  font-size: 12px;
   flex-shrink: 0;
+  color: var(--dim);
+  transition: color 0.2s, text-shadow 0.2s;
 }
 
-.status-dot.running {
-  background: var(--green);
-  box-shadow: 0 0 6px var(--green);
+.node-type-icon.running {
+  color: var(--green);
+  filter: drop-shadow(0 0 4px var(--green));
 }
 
-.status-dot.stopped {
-  background: var(--text-dim);
+.node-type-icon.stopped {
+  color: var(--text-dim);
+  opacity: 0.6;
 }
 
-.status-dot.errored {
-  background: var(--red);
-  box-shadow: 0 0 6px var(--red);
+.node-type-icon.errored {
+  color: var(--red);
+  filter: drop-shadow(0 0 4px var(--red));
+  animation: pulse-red 2s infinite;
 }
 
-.status-dot.stopping {
-  background: var(--yellow);
+.node-type-icon.stopping {
+  color: var(--yellow);
+  opacity: 0.8;
+}
+
+@keyframes pulse-red {
+  0% { filter: drop-shadow(0 0 2px var(--red)); }
+  50% { filter: drop-shadow(0 0 8px var(--red)); }
+  100% { filter: drop-shadow(0 0 2px var(--red)); }
 }
 
 .card-meta {
@@ -752,6 +761,35 @@ button:active {
   font-size: 11px;
   color: var(--text-dim);
   margin-top: 2px;
+}
+
+.node-type-toggle {
+  display: flex;
+  gap: 6px;
+}
+.node-type-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--dim);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.node-type-btn:hover {
+  border-color: var(--fg);
+  color: var(--fg);
+}
+.node-type-btn.active {
+  border-color: var(--purple);
+  background: rgba(160, 120, 255, 0.1);
+  color: var(--purple);
 }
 
 .modal-actions {

@@ -4,27 +4,23 @@
     "color": "#a78bfa"
   },
   {
-    "name": "analyst",
-    "color": "#eb8aff"
-  },
-  {
     "name": "frontend",
     "color": "#f1fb60"
-  },
-  {
-    "name": "backend",
-    "color": "#34d399"
-  },
-  {
-    "name": "qa",
-    "color": "#ff0000"
   },
   {
     "name": "devs",
     "color": "#001eff"
   },
   {
+    "name": "backend",
+    "color": "#ff4d4d"
+  },
+  {
     "name": "design",
     "color": "#888888"
+  },
+  {
+    "name": "analyst",
+    "color": "#eb8aff"
   }
 ]

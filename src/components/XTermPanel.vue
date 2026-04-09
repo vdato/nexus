@@ -1,7 +1,7 @@
 <template>
   <div
     class="xterm-panel"
-    :class="{ hidden: !processName, dragging }"
+    :class="{ hidden: !nodeName, dragging }"
     :style="{ height: panelHeight + 'px' }"
   >
     <div
@@ -10,7 +10,7 @@
       @touchstart.prevent="startDragTouch"
     ></div>
     <div class="log-header">
-      <span>Terminal — {{ processName }}</span>
+      <span>Terminal — {{ nodeName }}</span>
       <button class="btn-ghost" @click="$emit('close')" style="margin-left: auto">Close</button>
     </div>
     <div ref="termContainerRef" class="xterm-container" @click="focusTerminal"></div>
@@ -24,7 +24,7 @@ import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 
 const props = defineProps({
-  processName: { type: String, default: null },
+  nodeName: { type: String, default: null },
   panelHeight: { type: Number, default: 400 },
 })
 
@@ -127,7 +127,7 @@ function connectWs(name) {
   ws.onclose = () => {
     ws = null
     // Retry if panel is still open (process may not be ready yet)
-    if (props.processName) {
+    if (props.nodeName) {
       wsRetryTimer = setTimeout(() => connectWs(name), 1500)
     }
   }
@@ -139,8 +139,8 @@ function disconnectWs() {
   if (ws) { ws.close(); ws = null }
 }
 
-// When processName changes, reconnect
-watch(() => props.processName, async (name, oldName) => {
+// When nodeName changes, reconnect
+watch(() => props.nodeName, async (name, oldName) => {
   if (name && name !== oldName) {
     await nextTick()
     if (!term) createTerminal()
@@ -169,9 +169,9 @@ watch(() => props.panelHeight, () => {
 })
 
 onMounted(() => {
-  if (props.processName) {
+  if (props.nodeName) {
     createTerminal()
-    connectWs(props.processName)
+    connectWs(props.nodeName)
   }
 })
 

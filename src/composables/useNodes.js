@@ -1,8 +1,8 @@
 import { ref, onUnmounted } from 'vue'
 import { api } from './useApi.js'
 
-export function useProcesses() {
-  const processes = ref([])
+export function useNodes() {
+  const nodes = ref([])
   const groups = ref([])
   const lastSnapshot = ref('')
 
@@ -34,9 +34,9 @@ export function useProcesses() {
     return map
   }
 
-  function buildSortedGroups(procs, groupDefs) {
+  function buildSortedGroups(items, groupDefs) {
     const grouped = {}
-    for (const p of procs) {
+    for (const p of items) {
       const g = p.group || 'other'
       if (!grouped[g]) grouped[g] = []
       grouped[g].push(p)
@@ -58,9 +58,9 @@ export function useProcesses() {
     return { sorted, colorMap }
   }
 
-  function getCounts(procs) {
+  function getCounts(items) {
     const counts = { running: 0, stopped: 0, errored: 0, stopping: 0 }
-    for (const p of procs) {
+    for (const p of items) {
       if (counts[p.status] !== undefined) counts[p.status]++
       else counts.stopped++
     }
@@ -74,15 +74,15 @@ export function useProcesses() {
   ]
 
   async function refresh(force = false) {
-    const [procs, groupDefs] = await Promise.all([
+    const [items, groupDefs] = await Promise.all([
       api('/api/processes'),
       api('/api/groups'),
     ])
     const defs = Array.isArray(groupDefs) && groupDefs.length ? groupDefs : DEFAULT_GROUPS
 
     const snapshot = JSON.stringify({
-      procs: procs.map((p) => ({
-        name: p.name, status: p.status, pid: p.pid, group: p.group, branch: p.branch,
+      nodes: items.map((p) => ({
+        name: p.name, status: p.status, pid: p.pid, group: p.group, branch: p.branch, type: p.type,
       })),
       groups: defs,
     })
@@ -90,21 +90,21 @@ export function useProcesses() {
     if (!force && snapshot === lastSnapshot.value) return
     lastSnapshot.value = snapshot
 
-    processes.value = procs
+    nodes.value = items
     groups.value = defs
   }
 
-  async function startProcess(name) {
+  async function startNode(name) {
     await api(`/api/processes/${encodeURIComponent(name)}/start`, 'POST')
     await refresh(true)
   }
 
-  async function stopProcess(name) {
+  async function stopNode(name) {
     await api(`/api/processes/${encodeURIComponent(name)}/stop`, 'POST')
     await refresh(true)
   }
 
-  async function restartProcess(name) {
+  async function restartNode(name) {
     await api(`/api/processes/${encodeURIComponent(name)}/restart`, 'POST')
     await refresh(true)
   }
@@ -119,21 +119,21 @@ export function useProcesses() {
     await refresh(true)
   }
 
-  async function addProcess(data) {
+  async function addNode(data) {
     const result = await api('/api/config', 'POST', data)
     if (result.error) { alert(result.error); return false }
     await refresh(true)
     return true
   }
 
-  async function updateProcess(oldName, data) {
+  async function updateNode(oldName, data) {
     const result = await api(`/api/config/${encodeURIComponent(oldName)}`, 'PUT', data)
     if (result.error) { alert(result.error); return false }
     await refresh(true)
     return true
   }
 
-  async function removeProcess(name) {
+  async function removeNode(name) {
     if (!confirm(`Remove "${name}" from config?`)) return false
     const result = await api(`/api/config/${encodeURIComponent(name)}`, 'DELETE')
     if (result.error) { alert(result.error); return false }
@@ -141,11 +141,11 @@ export function useProcesses() {
     return true
   }
 
-  async function getProcessConfig(name) {
+  async function getNodeConfig(name) {
     return api(`/api/config/${encodeURIComponent(name)}`)
   }
 
-  async function importProcesses(fileData) {
+  async function importNodes(fileData) {
     const result = await api('/api/config/import', 'POST', fileData)
     if (result.error) { alert(result.error); return null }
     await refresh(true)
@@ -167,19 +167,19 @@ export function useProcesses() {
   onUnmounted(stopPolling)
 
   return {
-    processes,
+    nodes,
     groups,
     refresh,
-    startProcess,
-    stopProcess,
-    restartProcess,
+    startNode,
+    stopNode,
+    restartNode,
     startAll,
     stopAll,
-    addProcess,
-    updateProcess,
-    removeProcess,
-    getProcessConfig,
-    importProcesses,
+    addNode,
+    updateNode,
+    removeNode,
+    getNodeConfig,
+    importNodes,
     startPolling,
     stopPolling,
     buildSortedGroups,

@@ -1,7 +1,7 @@
 <template>
   <header>
     <div style="display: flex; align-items: center; gap: 16px">
-      <h1>xprocessmanager</h1>
+      <h1>NEXUS</h1>
       <div class="summary-bar">
         <span>Total: <span class="count">{{ total }}</span></span>
         <span>Running: <span class="count running-count">{{ counts.running }}</span></span>
@@ -11,8 +11,8 @@
     </div>
     <div class="header-actions">
 
-      <button class="btn-ghost" @click="$emit('add-process')">
-        <i class="fa-solid fa-plus mr-1"></i> Add Process
+      <button class="btn-ghost" @click="$emit('add-node')">
+        <i class="fa-solid fa-plus mr-1"></i> Node
       </button>
       <button class="btn-start btn-icon" @click="$emit('start-all')" title="Start All">
         <i class="fa-solid fa-play"></i>
@@ -42,5 +42,5 @@ defineProps({
   total: { type: Number, required: true },
 })
 
-defineEmits(['add-process', 'start-all', 'stop-all', 'open-settings'])
+defineEmits(['add-node', 'start-all', 'stop-all', 'open-settings'])
 </script>

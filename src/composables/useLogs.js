@@ -2,7 +2,7 @@ import { ref, onUnmounted, nextTick } from 'vue'
 import { api } from './useApi.js'
 
 export function useLogs() {
-  const selectedProcess = ref(null)
+  const selectedNode = ref(null)
   const logs = ref([])
   const lastRefresh = ref('')
   const logAutoScroll = ref(true)
@@ -19,9 +19,9 @@ export function useLogs() {
   }
 
   async function fetchLogs() {
-    if (!selectedProcess.value) return
+    if (!selectedNode.value) return
     const newLogs = await api(
-      `/api/processes/${encodeURIComponent(selectedProcess.value)}/logs?since=${logSince}`
+      `/api/processes/${encodeURIComponent(selectedNode.value)}/logs?since=${logSince}`
     )
     if (!Array.isArray(newLogs)) return
 
@@ -42,18 +42,18 @@ export function useLogs() {
   }
 
   function selectLog(name) {
-    if (selectedProcess.value === name) {
+    if (selectedNode.value === name) {
       closeLog()
       return
     }
-    selectedProcess.value = name
+    selectedNode.value = name
     logSince = 0
     logs.value = []
     fetchLogs()
   }
 
   function closeLog() {
-    selectedProcess.value = null
+    selectedNode.value = null
     logs.value = []
     logSince = 0
   }
@@ -88,7 +88,7 @@ export function useLogs() {
   }
 
   return {
-    selectedProcess,
+    selectedNode,
     logs,
     lastRefresh,
     logAutoScroll,

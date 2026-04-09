@@ -134,7 +134,7 @@ export function useSettings() {
       const text = await file.text()
       const data = JSON.parse(text)
       if (!Array.isArray(data)) {
-        alert('File must contain a JSON array of process configs.')
+        alert('File must contain a JSON array of node configs.')
         return null
       }
       const result = await api('/api/config/import', 'POST', data)

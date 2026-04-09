@@ -1,7 +1,7 @@
 <template>
   <div
     class="log-panel"
-    :class="{ hidden: !selectedProcess, dragging }"
+    :class="{ hidden: !selectedNode, dragging }"
     :style="{ height: panelHeight + 'px' }"
   >
     <div
@@ -10,7 +10,7 @@
       @touchstart.prevent="startDragTouch"
     ></div>
     <div class="log-header">
-      <span>Logs — {{ selectedProcess }}</span>
+      <span>Logs — {{ selectedNode }}</span>
       <span style="font-size: 11px; color: var(--text-dim); margin-left: auto; margin-right: 12px">
         {{ lastRefresh }}
       </span>
@@ -32,7 +32,7 @@
         v-model="stdinInput"
         type="text"
         class="stdin-input"
-        placeholder="Send input to process…"
+        placeholder="Send input to node…"
         @keydown.enter="sendStdin"
       />
       <button class="btn-stdin-send" @click="sendStdin">Send</button>
@@ -51,7 +51,7 @@ function formatAnsi(text) {
 }
 
 const props = defineProps({
-  selectedProcess: { type: String, default: null },
+  selectedNode: { type: String, default: null },
   logs: { type: Array, required: true },
   lastRefresh: { type: String, default: '' },
   panelHeight: { type: Number, default: 300 },

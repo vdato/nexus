@@ -355,6 +355,7 @@ app.get('/api/processes', (_req, res) => {
     const resolvedCwd = resolveTemplate(config.cwd);
     return {
       name: config.name,
+      type: config.type || 'service',
       group: config.group,
       command: `${config.command} ${(config.args || []).map(resolveTemplate).join(' ')}`.trim(),
       cwd: config.cwd || null,
@@ -618,7 +619,7 @@ app.post('/api/config/import', (req, res) => {
       skipped.push({ name: item.name, reason: 'already exists' });
       continue;
     }
-    const entry = { name: item.name, command: item.command, args: item.args || [], group: item.group || 'other' };
+    const entry = { name: item.name, command: item.command, args: item.args || [], type: item.type || 'service', group: item.group || 'other' };
     if (item.cwd) entry.cwd = item.cwd;
     if (item.stopCommand) entry.stopCommand = item.stopCommand;
     if (item.usePty !== undefined) entry.usePty = !!item.usePty;
@@ -630,14 +631,14 @@ app.post('/api/config/import', (req, res) => {
 });
 
 app.post('/api/config', (req, res) => {
-  const { name, command, args, cwd, group, stopCommand, usePty } = req.body;
+  const { name, command, args, cwd, type, group, stopCommand, usePty } = req.body;
   if (!name || !command) {
     return res.status(400).json({ error: 'name and command are required' });
   }
   if (processConfigs.some((c) => c.name === name)) {
     return res.status(409).json({ error: `Process "${name}" already exists` });
   }
-  const entry = { name, command, args: args || [], group: group || 'other' };
+  const entry = { name, command, args: args || [], type: type || 'service', group: group || 'other' };
   if (cwd) entry.cwd = cwd;
   if (stopCommand) entry.stopCommand = stopCommand;
   if (usePty !== undefined) entry.usePty = !!usePty;
@@ -660,7 +661,7 @@ app.put('/api/config/:name', (req, res) => {
   if (idx === -1) {
     return res.status(404).json({ error: `Process "${oldName}" not found` });
   }
-  const { name: newName, command, args, cwd, group, stopCommand, usePty } = req.body;
+  const { name: newName, command, args, cwd, type, group, stopCommand, usePty } = req.body;
   if (!command) {
     return res.status(400).json({ error: 'command is required' });
   }
@@ -668,7 +669,7 @@ app.put('/api/config/:name', (req, res) => {
   if (finalName !== oldName && processConfigs.some((c) => c.name === finalName)) {
     return res.status(409).json({ error: `Process "${finalName}" already exists` });
   }
-  const updated = { name: finalName, command, args: args || [], group: group || 'other' };
+  const updated = { name: finalName, command, args: args || [], type: type || 'service', group: group || 'other' };
   if (cwd) updated.cwd = cwd;
   if (stopCommand) updated.stopCommand = stopCommand;
   if (usePty !== undefined) updated.usePty = !!usePty;
