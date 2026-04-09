@@ -1,5 +1,5 @@
 <template>
-  <div v-if="state.show" class="modal-overlay" @click.self="hideAlert">
+  <div v-if="state.show" class="modal-overlay" @mousedown.self="overlayMouseDown = true" @click.self="handleOverlayClick">
     <div class="modal alert-modal">
       <div class="modal-header">
         <h2>{{ state.title }}</h2>
@@ -15,9 +15,16 @@
 </template>
 
 <script setup>
+import { ref } from 'vue'
 import { useAlert } from '../composables/useAlert.js'
 
 const { state, hideAlert } = useAlert()
+
+const overlayMouseDown = ref(false)
+function handleOverlayClick() {
+  if (overlayMouseDown.value) hideAlert()
+  overlayMouseDown.value = false
+}
 </script>
 
 <style scoped>

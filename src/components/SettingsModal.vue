@@ -1,5 +1,5 @@
 <template>
-  <div v-if="show" class="modal-overlay" @click.self="emit('close')">
+  <div v-if="show" class="modal-overlay" @mousedown.self="overlayMouseDown = true" @click.self="handleOverlayClick">
     <div class="modal modal-wide">
       <h2>Settings</h2>
       <div class="settings-tabs">
@@ -19,10 +19,10 @@
         <div class="settings-tab-content" :class="{ active: activeTab === 'general' }">
           <!-- Import section -->
           <div class="settings-section">
-            <div class="settings-section-title">Import processes</div>
+            <div class="settings-section-title">Import nodes</div>
             <div class="env-note">
               Choose a JSON file in the same format as <code>processes.config.json</code>
-              (an array of process definitions). Existing names are skipped.
+              (an array of node definitions). Existing names are skipped.
             </div>
             <button type="button" class="btn-ghost" @click="triggerImport">Import…</button>
             <input
@@ -38,7 +38,7 @@
           <div class="settings-section">
             <div class="settings-section-title">Groups</div>
             <div class="env-note">
-              Process groups, section order, and card border colors. Stored in
+              Node groups, section order, and card border colors. Stored in
               <code>groups.config.json</code>. At least one group is required.
             </div>
             <div class="env-rows group-rows">
@@ -78,7 +78,7 @@
           <div class="settings-section">
             <div class="settings-section-title">Environment variables</div>
             <div class="env-note">
-              These variables are injected into all processes at startup. Restart running processes to pick up changes.
+              These variables are injected into all nodes at startup. Restart running nodes to pick up changes.
             </div>
             <div class="env-rows">
               <div v-for="(row, i) in envRows" :key="i" class="env-row">
@@ -136,7 +136,7 @@
               />
             </div>
             <div class="setting-field">
-              <label>Max log lines per process</label>
+              <label>Max log lines per node</label>
               <input
                 :value="maxLogLines"
                 type="number" min="50" step="50"
@@ -177,6 +177,12 @@ const emit = defineEmits([
   'update:logPollInterval', 'update:statusPollInterval', 'update:popoverPollInterval',
   'update:port', 'update:maxLogLines',
 ])
+
+const overlayMouseDown = ref(false)
+function handleOverlayClick() {
+  if (overlayMouseDown.value) emit('close')
+  overlayMouseDown.value = false
+}
 
 const activeTab = ref('general')
 const importFileRef = ref(null)

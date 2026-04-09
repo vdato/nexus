@@ -1,7 +1,7 @@
 <template>
-  <div v-if="show" class="modal-overlay" @click.self="handleClose">
+  <div v-if="show" class="modal-overlay" @mousedown.self="overlayMouseDown = true" @click.self="handleOverlayClick">
     <div class="modal">
-      <h2>Checkout Branch — {{ processName }}</h2>
+      <h2>Checkout Branch — {{ nodeName }}</h2>
       <div class="form-group">
         <input
           v-model="filterQuery"
@@ -43,7 +43,7 @@ import { ref, computed, watch, nextTick } from 'vue'
 
 const props = defineProps({
   show: Boolean,
-  processName: String,
+  nodeName: String,
   branches: Array,
   currentBranch: String,
   loading: Boolean,
@@ -76,6 +76,12 @@ function checkout(branch) {
     return
   }
   emit('checkout', branch)
+}
+
+const overlayMouseDown = ref(false)
+function handleOverlayClick() {
+  if (overlayMouseDown.value) emit('close')
+  overlayMouseDown.value = false
 }
 
 function handleClose() {
