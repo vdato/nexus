@@ -4,6 +4,10 @@
     "color": "#a78bfa"
   },
   {
+    "name": "analyst",
+    "color": "#eb8aff"
+  },
+  {
     "name": "frontend",
     "color": "#f1fb60"
   },
@@ -18,10 +22,6 @@
   {
     "name": "devs",
     "color": "#001eff"
-  },
-  {
-    "name": "analyst",
-    "color": "#eb8aff"
   },
   {
     "name": "design",

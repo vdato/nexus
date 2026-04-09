@@ -76,6 +76,12 @@ export function useSettings() {
     groupRows.value.splice(index, 1)
   }
 
+  function reorderGroups({ from, to }) {
+    const rows = groupRows.value
+    const [item] = rows.splice(from, 1)
+    rows.splice(to, 0, item)
+  }
+
   async function saveSettings() {
     // Build env object
     const env = {}
@@ -160,6 +166,7 @@ export function useSettings() {
     removeEnvRow,
     addGroupRow,
     removeGroupRow,
+    reorderGroups,
     saveSettings,
     handleImport,
     normalizeColorInput,

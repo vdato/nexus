@@ -27,6 +27,43 @@ body {
   min-height: 100vh;
 }
 
+/* ── Scrollbars ──────────────────────────── */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+*:hover {
+  scrollbar-color: #444860 transparent;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #444860;
+}
+
+::-webkit-scrollbar-thumb:active {
+  background: #555975;
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
 .mr-1 {
   margin-right: 6px;
 }
@@ -166,10 +203,44 @@ button:active {
   letter-spacing: 1px;
   color: var(--text-dim);
   margin: 20px 0 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .group-title:first-child {
   margin-top: 0;
+}
+
+.group-title-drag-handle {
+  color: var(--text-dim);
+  cursor: grab;
+  font-size: 11px;
+  opacity: 0.3;
+  transition: opacity 0.15s, color 0.15s;
+}
+
+.group-title-drag-handle:hover {
+  opacity: 1;
+  color: var(--text);
+}
+
+.group-title-drag-handle:active {
+  cursor: grabbing;
+}
+
+.group-title.group-drag-over {
+  border-bottom: 2px solid var(--blue);
+  padding-bottom: 2px;
+  margin-bottom: 6px;
+}
+
+.group-title.group-card-drag-over {
+  color: var(--blue);
+  background: rgba(96, 165, 250, 0.08);
+  border-radius: 4px;
+  padding: 2px 6px;
+  margin-left: -6px;
 }
 
 .process-grid {
@@ -750,6 +821,30 @@ button:active {
 
 .group-rows .env-row input.env-val {
   font-family: inherit;
+}
+
+.group-drag-handle {
+  color: var(--text-dim);
+  cursor: grab;
+  font-size: 12px;
+  padding: 0 2px;
+  flex-shrink: 0;
+  opacity: 0.4;
+  transition: opacity 0.15s, color 0.15s;
+}
+
+.group-drag-handle:hover {
+  opacity: 1;
+  color: var(--text);
+}
+
+.group-drag-handle:active {
+  cursor: grabbing;
+}
+
+.group-row.drag-over-group {
+  border-top: 2px solid var(--blue);
+  margin-top: -2px;
 }
 
 .group-row input[type="color"].group-color {

@@ -71,21 +71,6 @@
         <div v-if="!cardLogs.length" class="card-log-empty">No logs yet.</div>
       </div>
 
-      <div v-if="process.usePty" class="stdin-input-row">
-        <input
-          v-model="stdinInput"
-          type="text"
-          class="stdin-input"
-          placeholder="Send input to process…"
-          @keydown.enter="sendStdin"
-          :disabled="process.status !== 'running'"
-        />
-        <button
-          class="btn-stdin-send"
-          @click="sendStdin"
-          :disabled="process.status !== 'running'"
-        >Send</button>
-      </div>
     </div>
 
     <!-- Bottom Expand Indicator -->
@@ -130,7 +115,6 @@ const gitRemoteStatus = ref(null)
 const cardLogs = ref([])
 const logTrayBody = ref(null)
 const xtermContainerRef = ref(null)
-const stdinInput = ref('')
 let logSince = 0
 let pollTimer = null
 
@@ -297,20 +281,6 @@ async function toggleExpand() {
     destroyCardTerminal()
     stopPolling()
     cardLogs.value = []
-  }
-}
-
-async function sendStdin() {
-  const text = stdinInput.value || ''
-  stdinInput.value = ''
-  if (props.process.usePty && ws && ws.readyState === 1) {
-    ws.send(JSON.stringify({ type: 'input', data: text + '\r' }))
-  } else {
-    await api(
-      `/api/processes/${encodeURIComponent(props.process.name)}/stdin`,
-      'POST',
-      { input: text }
-    )
   }
 }
 

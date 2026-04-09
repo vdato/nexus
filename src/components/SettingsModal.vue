@@ -42,7 +42,19 @@
               <code>groups.config.json</code>. At least one group is required.
             </div>
             <div class="env-rows group-rows">
-              <div v-for="(row, i) in groupRows" :key="i" class="env-row group-row">
+              <div
+                v-for="(row, i) in groupRows"
+                :key="i"
+                class="env-row group-row"
+                :class="{ 'drag-over-group': dragOverIndex === i }"
+                draggable="true"
+                @dragstart="onGroupDragStart(i, $event)"
+                @dragover.prevent="onGroupDragOver(i)"
+                @dragleave="onGroupDragLeave(i)"
+                @drop.prevent="onGroupDrop(i)"
+                @dragend="onGroupDragEnd"
+              >
+                <span class="group-drag-handle" title="Drag to reorder"><i class="fa-solid fa-grip-vertical"></i></span>
                 <input
                   v-model="row.name"
                   type="text"
@@ -160,6 +172,7 @@ const emit = defineEmits([
   'close', 'save',
   'add-env', 'remove-env',
   'add-group', 'remove-group',
+  'reorder-groups',
   'import',
   'update:logPollInterval', 'update:statusPollInterval', 'update:popoverPollInterval',
   'update:port', 'update:maxLogLines',
@@ -167,6 +180,36 @@ const emit = defineEmits([
 
 const activeTab = ref('general')
 const importFileRef = ref(null)
+
+// ── Group drag-and-drop ──────────────────
+const dragIndex = ref(null)
+const dragOverIndex = ref(null)
+
+function onGroupDragStart(i, ev) {
+  dragIndex.value = i
+  ev.dataTransfer.effectAllowed = 'move'
+}
+
+function onGroupDragOver(i) {
+  dragOverIndex.value = i
+}
+
+function onGroupDragLeave(i) {
+  if (dragOverIndex.value === i) dragOverIndex.value = null
+}
+
+function onGroupDrop(i) {
+  const from = dragIndex.value
+  if (from === null || from === i) return
+  emit('reorder-groups', { from, to: i })
+  dragOverIndex.value = null
+  dragIndex.value = null
+}
+
+function onGroupDragEnd() {
+  dragIndex.value = null
+  dragOverIndex.value = null
+}
 
 function triggerImport() {
   importFileRef.value?.click()

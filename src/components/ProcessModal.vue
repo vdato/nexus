@@ -17,7 +17,12 @@
       </div>
       <div class="form-group">
         <label>Working Directory</label>
-        <input v-model="form.cwd" type="text" placeholder="{BASE_DIR}/my-project  (optional)" />
+        <div style="display: flex; gap: 6px;">
+          <input v-model="form.cwd" type="text" placeholder="{BASE_DIR}/my-project  (optional)" style="flex: 1" />
+          <button class="btn-ghost" @click="browseDirectory" :disabled="browsing" style="white-space: nowrap; flex-shrink: 0;">
+            {{ browsing ? 'Picking...' : 'Browse' }}
+          </button>
+        </div>
         <div class="hint">Use {ENV_KEY} to reference environment variables, e.g. {BASE_DIR}/src</div>
         <div
           v-if="resolvedCwd && form.cwd && resolvedCwd !== form.cwd"
@@ -78,6 +83,18 @@ const form = reactive({
 })
 
 const resolvedCwd = ref(null)
+const browsing = ref(false)
+
+async function browseDirectory() {
+  browsing.value = true
+  try {
+    const result = await api('/api/browse-directory', 'POST', { startDir: form.cwd || undefined })
+    if (result.path) {
+      form.cwd = result.path
+    }
+  } catch {}
+  browsing.value = false
+}
 
 watch(() => props.show, async (val) => {
   if (!val) return

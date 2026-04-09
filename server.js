@@ -526,6 +526,59 @@ app.post('/api/processes/:name/git/pull', async (req, res) => {
   }
 });
 
+app.post('/api/browse-directory', (req, res) => {
+  const startDir = req.body.startDir || os.homedir();
+  const platform = os.platform();
+  let cmd, args;
+
+  if (platform === 'darwin') {
+    const script = `
+      set defaultDir to POSIX file "${startDir.replace(/"/g, '\\"')}"
+      try
+        set chosenFolder to POSIX path of (choose folder with prompt "Select Working Directory" default location defaultDir)
+        return chosenFolder
+      on error
+        return "__CANCELLED__"
+      end try
+    `;
+    cmd = 'osascript';
+    args = ['-e', script];
+  } else if (platform === 'win32') {
+    const psScript = `Add-Type -AssemblyName System.Windows.Forms; $f = New-Object System.Windows.Forms.FolderBrowserDialog; $f.SelectedPath = '${startDir.replace(/'/g, "''")}'; $f.Description = 'Select Working Directory'; if ($f.ShowDialog() -eq 'OK') { $f.SelectedPath } else { '__CANCELLED__' }`;
+    cmd = 'powershell';
+    args = ['-NoProfile', '-Command', psScript];
+  } else {
+    // Linux: try zenity, fall back to kdialog
+    cmd = 'zenity';
+    args = ['--file-selection', '--directory', '--title=Select Working Directory', `--filename=${startDir}/`];
+  }
+
+  try {
+    const result = execFileSync(cmd, args, {
+      encoding: 'utf-8',
+      timeout: 60000,
+    }).trim();
+    if (!result || result === '__CANCELLED__') {
+      return res.json({ cancelled: true });
+    }
+    // Remove trailing slash unless it's the root
+    const dir = result.length > 1 ? result.replace(/[/\\]$/, '') : result;
+    res.json({ path: dir });
+  } catch (err) {
+    // zenity failed on Linux — try kdialog
+    if (platform === 'linux') {
+      try {
+        const result = execFileSync('kdialog', ['--getexistingdirectory', startDir, '--title', 'Select Working Directory'], {
+          encoding: 'utf-8',
+          timeout: 60000,
+        }).trim();
+        if (result) return res.json({ path: result });
+      } catch {}
+    }
+    res.json({ cancelled: true });
+  }
+});
+
 app.post('/api/start-all', (_req, res) => {
   const results = {};
   for (const config of processConfigs) {

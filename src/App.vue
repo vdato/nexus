@@ -40,6 +40,8 @@
       @hover-enter="popoverStore.onCardHoverEnter"
       @hover-leave="popoverStore.onCardHoverLeave"
       @reorder="handleReorder"
+      @reorder-groups="handleReorderGroups"
+      @move-to-group="handleMoveToGroup"
       @branch-click="openBranchModal"
     />
   </div>
@@ -116,6 +118,7 @@
     @remove-env="settingsStore.removeEnvRow"
     @add-group="settingsStore.addGroupRow"
     @remove-group="settingsStore.removeGroupRow"
+    @reorder-groups="settingsStore.reorderGroups"
     @import="handleImport"
   />
 </template>
@@ -205,6 +208,24 @@ function handleReorder(orderedNames) {
   customOrder.value = orderedNames
   localStorage.setItem('xpm-order', JSON.stringify(orderedNames))
   if (sortBy.value !== 'default') sortBy.value = 'default'
+}
+
+async function handleMoveToGroup({ name, group }) {
+  const config = await processStore.getProcessConfig(name)
+  if (config.error) return
+  await processStore.updateProcess(name, { ...config, group })
+}
+
+async function handleReorderGroups(groupNames) {
+  // Rebuild groups list with existing colors in the new order
+  const currentGroups = processStore.groups.value
+  const reordered = groupNames.map((name) => {
+    const existing = currentGroups.find((g) => (typeof g === 'string' ? g : g.name) === name)
+    if (existing && typeof existing === 'object') return existing
+    return { name, color: '#888888' }
+  })
+  await api('/api/groups', 'PUT', reordered)
+  await processStore.refresh(true)
 }
 
 const groupNames = computed(() => {

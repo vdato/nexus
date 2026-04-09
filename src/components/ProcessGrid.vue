@@ -1,7 +1,26 @@
 <template>
   <div>
-    <template v-for="([group, items]) in sortedGroups" :key="group">
-      <div v-if="group" class="group-title">{{ group }}</div>
+    <template v-for="([group, items], gi) in sortedGroups" :key="group">
+      <div
+        v-if="group"
+        class="group-title"
+        :class="{
+          'group-drag-over': groupDragOverIndex === gi && groupDragOverIndex !== groupDragIndex,
+          'group-card-drag-over': cardDragOverGroup === group && dragName,
+        }"
+        @dragover.prevent="onGroupHeaderDragOver(gi, $event)"
+        @dragleave="onGroupHeaderDragLeave(gi)"
+        @drop.prevent="onGroupHeaderDrop(gi, group)"
+      >
+        <span
+          class="group-title-drag-handle"
+          draggable="true"
+          @dragstart.stop="onGroupDragStart(gi, group, $event)"
+          @dragend="onGroupDragEnd"
+          title="Drag to reorder group"
+        ><i class="fa-solid fa-grip-vertical"></i></span>
+        {{ group }}
+      </div>
       <div class="process-grid">
         <ProcessCard
           v-for="p in items"
@@ -40,16 +59,17 @@ const props = defineProps({
   viewMode: { type: String, default: 'group' },
 })
 
-const emit = defineEmits(['select', 'start', 'stop', 'restart', 'edit', 'hover-enter', 'hover-leave', 'reorder', 'branch-click'])
+const emit = defineEmits(['select', 'start', 'stop', 'restart', 'edit', 'hover-enter', 'hover-leave', 'reorder', 'reorder-groups', 'move-to-group', 'branch-click'])
 
-// ── Drag and Drop ──────────────────────────
+// ── Card Drag and Drop ─────────────────────
 const dragName = ref(null)
 const dragOverName = ref(null)
+const cardDragOverGroup = ref(null)
 
 function onDragStart(name, ev) {
   // Don't drag when interacting with terminal, log body, or input areas
   const src = ev.target
-  if (src.closest('.card-xterm-container, .card-log-body, .xterm, .stdin-input-row')) {
+  if (src.closest('.card-xterm-container, .card-log-body, .xterm')) {
     ev.preventDefault()
     return
   }
@@ -69,13 +89,29 @@ function onDragEnd(ev) {
   if (ev.target) ev.target.style.opacity = ''
   dragName.value = null
   dragOverName.value = null
+  cardDragOverGroup.value = null
+}
+
+function findProcessGroup(name) {
+  for (const [group, items] of props.sortedGroups) {
+    if (items.some(p => p.name === name)) return group
+  }
+  return null
 }
 
 function onDrop(targetName) {
   const sourceName = dragName.value
   if (!sourceName || sourceName === targetName) return
 
-  // Build the full ordered list from current display
+  const sourceGroup = findProcessGroup(sourceName)
+  const targetGroup = findProcessGroup(targetName)
+
+  // Cross-group: move process to the target's group
+  if (sourceGroup !== targetGroup && targetGroup) {
+    emit('move-to-group', { name: sourceName, group: targetGroup })
+  }
+
+  // Reorder within display
   const allNames = props.sortedGroups.flatMap(([, items]) => items.map(p => p.name))
   const srcIdx = allNames.indexOf(sourceName)
   const tgtIdx = allNames.indexOf(targetName)
@@ -87,5 +123,63 @@ function onDrop(targetName) {
   emit('reorder', allNames)
   dragName.value = null
   dragOverName.value = null
+  cardDragOverGroup.value = null
+}
+
+// ── Group Drag and Drop ────────────────────
+const groupDragIndex = ref(null)
+const groupDragOverIndex = ref(null)
+
+function onGroupDragStart(gi, group, ev) {
+  groupDragIndex.value = gi
+  ev.dataTransfer.effectAllowed = 'move'
+  ev.dataTransfer.setData('text/x-group', group)
+}
+
+function onGroupHeaderDragOver(gi) {
+  if (groupDragIndex.value !== null) {
+    groupDragOverIndex.value = gi
+  }
+  if (dragName.value) {
+    cardDragOverGroup.value = props.sortedGroups[gi]?.[0] || null
+  }
+}
+
+function onGroupHeaderDragLeave(gi) {
+  if (groupDragOverIndex.value === gi) groupDragOverIndex.value = null
+  const group = props.sortedGroups[gi]?.[0]
+  if (cardDragOverGroup.value === group) cardDragOverGroup.value = null
+}
+
+function onGroupHeaderDrop(gi, group) {
+  // Card dropped onto group header
+  if (dragName.value) {
+    const sourceName = dragName.value
+    const sourceGroup = findProcessGroup(sourceName)
+    if (sourceGroup !== group) {
+      emit('move-to-group', { name: sourceName, group })
+    }
+    dragName.value = null
+    dragOverName.value = null
+    cardDragOverGroup.value = null
+    return
+  }
+
+  // Group reorder
+  const from = groupDragIndex.value
+  if (from === null || from === gi) return
+
+  const groupNames = props.sortedGroups.map(([name]) => name)
+  const [moved] = groupNames.splice(from, 1)
+  groupNames.splice(gi, 0, moved)
+
+  emit('reorder-groups', groupNames)
+  groupDragIndex.value = null
+  groupDragOverIndex.value = null
+}
+
+function onGroupDragEnd() {
+  groupDragIndex.value = null
+  groupDragOverIndex.value = null
 }
 </script>
