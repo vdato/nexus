@@ -3,7 +3,7 @@
     class="card"
     :class="{ selected: isSelected, expanded }"
     :style="{ borderColor, '--card-color': borderColor }"
-    @click="toggleExpand"
+    @click="$emit('select', process.name)"
     @mouseenter="!expanded && $emit('hover-enter', process.name, $event.currentTarget)"
     @mouseleave="!expanded && $emit('hover-leave')"
   >
@@ -73,16 +73,18 @@
 
     </div>
 
-    <!-- Bottom Expand Indicator -->
-    <div
+    <!-- Bottom Expand Button -->
+    <button
       class="card-expand-indicator"
       :class="{ active: expanded }"
       :style="{ borderColor, color: expanded ? borderColor : '' }"
+      @click.stop="toggleExpand"
+      :title="expanded ? 'Collapse' : 'Expand'"
     >
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <polyline :points="expanded ? '18 15 12 9 6 15' : '6 9 12 15 18 9'"/>
       </svg>
-    </div>
+    </button>
   </div>
 </template>
 
@@ -211,18 +213,27 @@ function destroyCardTerminal() {
   if (term) { term.dispose(); term = null; fitAddon = null }
 }
 
+let wsRetryTimer = null
+
 function connectWs(name) {
   disconnectWs()
-  if (!name) return
+  if (!name || !expanded.value) return
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
   const url = `${proto}//${location.host}/ws/terminal?name=${encodeURIComponent(name)}`
   ws = new WebSocket(url)
   ws.onmessage = (ev) => { if (term) term.write(ev.data) }
-  ws.onclose = () => { ws = null }
-  ws.onerror = () => { ws = null }
+  ws.onclose = () => {
+    ws = null
+    // Retry connection if still expanded (process may not be ready yet)
+    if (expanded.value) {
+      wsRetryTimer = setTimeout(() => connectWs(name), 1500)
+    }
+  }
+  ws.onerror = () => {}
 }
 
 function disconnectWs() {
+  if (wsRetryTimer) { clearTimeout(wsRetryTimer); wsRetryTimer = null }
   if (ws) { ws.close(); ws = null }
 }
 

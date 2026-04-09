@@ -102,6 +102,8 @@ function destroyTerminal() {
   if (term) { term.dispose(); term = null; fitAddon = null }
 }
 
+let wsRetryTimer = null
+
 function connectWs(name) {
   disconnectWs()
   if (!name) return
@@ -114,11 +116,18 @@ function connectWs(name) {
     if (term) term.write(ev.data)
   }
 
-  ws.onclose = () => { ws = null }
-  ws.onerror = () => { ws = null }
+  ws.onclose = () => {
+    ws = null
+    // Retry if panel is still open (process may not be ready yet)
+    if (props.processName) {
+      wsRetryTimer = setTimeout(() => connectWs(name), 1500)
+    }
+  }
+  ws.onerror = () => {}
 }
 
 function disconnectWs() {
+  if (wsRetryTimer) { clearTimeout(wsRetryTimer); wsRetryTimer = null }
   if (ws) { ws.close(); ws = null }
 }
 
