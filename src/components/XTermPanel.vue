@@ -114,22 +114,25 @@ function connectWs(name) {
 
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
   const url = `${proto}//${location.host}/ws/terminal?name=${encodeURIComponent(name)}`
-  ws = new WebSocket(url)
+  const localWs = new WebSocket(url)
+  ws = localWs
 
-  ws.onopen = () => {}
+  localWs.onopen = () => {}
 
-  ws.onmessage = (ev) => {
-    if (term) term.write(ev.data)
+  localWs.onmessage = (ev) => {
+    if (ws === localWs && term) term.write(ev.data)
   }
 
-  ws.onclose = () => {
+  localWs.onclose = () => {
+    // Ignore close events from a stale socket (superseded by a newer connectWs call)
+    if (ws !== localWs) return
     ws = null
-    // Retry if panel is still open (process may not be ready yet)
-    if (props.nodeName) {
+    // Retry only if the panel is still showing the same node
+    if (props.nodeName === name) {
       wsRetryTimer = setTimeout(() => connectWs(name), 1500)
     }
   }
-  ws.onerror = () => {}
+  localWs.onerror = () => {}
 }
 
 function disconnectWs() {
