@@ -1,127 +1,192 @@
 <template>
   <div v-if="show" class="modal-overlay" @mousedown.self="overlayMouseDown = true" @click.self="handleOverlayClick">
-    <div class="modal workspace-modal" :class="{ 'workspace-modal-editor': !!openFile }">
+    <div class="modal workspace-modal" :class="{ 'workspace-modal-editor': !!openFile || terminalOpen, 'workspace-modal-with-term': terminalOpen }">
       <div class="workspace-header">
         <h2>
           <i class="fa-solid fa-folder-open" style="margin-right: 8px; color: var(--yellow)"></i>
           {{ nodeName }}
         </h2>
         <div style="display: flex; gap: 6px; margin-left: auto">
-          <button v-if="openFile" class="btn-ghost" @click="closeFile">
-            <i class="fa-solid fa-arrow-left" style="margin-right: 6px"></i>Back
+          <button
+            class="btn-ghost workspace-terminal-toggle"
+            :class="{ active: terminalOpen }"
+            @click="toggleTerminal"
+            title="Toggle Terminal"
+          >
+            <i class="fa-solid fa-terminal" style="margin-right: 4px"></i>Terminal
           </button>
-          <button class="btn-ghost" @click="$emit('close')">Close</button>
+          <button class="btn-ghost" @click="handleClose">Close</button>
         </div>
       </div>
 
-      <!-- File Browser -->
-      <template v-if="!openFile">
-        <div class="workspace-search-bar">
-          <i class="fa-solid fa-magnifying-glass workspace-search-icon"></i>
-          <input
-            ref="searchInputRef"
-            v-model="searchQuery"
-            type="text"
-            class="workspace-search-input"
-            placeholder="Search files and content..."
-            @input="onSearchInput"
-            @keydown.esc="clearSearch"
-          />
-          <button v-if="searchQuery" class="workspace-search-clear" @click="clearSearch">
-            <i class="fa-solid fa-xmark"></i>
-          </button>
-        </div>
+      <div class="workspace-body" :class="{ 'has-terminal': terminalOpen }">
+        <!-- Main content pane -->
+        <div class="workspace-main">
+          <!-- File Browser -->
+          <template v-if="!openFile">
+            <div class="workspace-search-bar">
+              <i class="fa-solid fa-magnifying-glass workspace-search-icon"></i>
+              <input
+                ref="searchInputRef"
+                v-model="searchQuery"
+                type="text"
+                class="workspace-search-input"
+                placeholder="Search files and content..."
+                @input="onSearchInput"
+                @keydown.esc="clearSearch"
+              />
+              <button v-if="searchQuery" class="workspace-search-clear" @click="clearSearch">
+                <i class="fa-solid fa-xmark"></i>
+              </button>
+            </div>
 
-        <!-- Search Results -->
-        <template v-if="searchActive">
-          <div class="workspace-file-list">
-            <div v-if="searchLoading" class="workspace-empty">Searching...</div>
-            <div v-if="!searchLoading && !searchResults.length && searchQuery" class="workspace-empty">No results found</div>
-            <div
-              v-for="(result, i) in searchResults"
-              :key="i"
-              class="workspace-file-item clickable"
-              @click="openFileFromSearch(result)"
-            >
-              <i :class="fileIconByName(result.path)" style="width: 16px"></i>
-              <div class="search-result-info">
-                <span class="file-name">{{ result.path }}</span>
-                <span v-if="result.type === 'content'" class="search-result-line">
-                  L{{ result.line }}: {{ result.text }}
-                </span>
+            <!-- Search Results -->
+            <template v-if="searchActive">
+              <div class="workspace-file-list">
+                <div class="workspace-file-list-header">
+                  <input
+                    type="checkbox"
+                    class="workspace-file-checkbox"
+                    :checked="isAllInViewSelected"
+                    @change="toggleSelectAllInView"
+                  />
+                  <span>File</span>
+                  <span v-if="selectedFiles.length" style="margin-left: auto; text-transform: none; color: var(--blue)">
+                    {{ selectedFiles.length }} selected
+                  </span>
+                </div>
+                <div v-if="searchLoading" class="workspace-empty">Searching...</div>
+                <div v-if="!searchLoading && !searchResults.length && searchQuery" class="workspace-empty">No results found</div>
+                <div
+                  v-for="(result, i) in searchResults"
+                  :key="i"
+                  class="workspace-file-item clickable"
+                  @click="openFileFromSearch(result)"
+                >
+                  <input
+                    type="checkbox"
+                    class="workspace-file-checkbox"
+                    :checked="selectedFiles.includes(result.path)"
+                    @click.stop="toggleFileSelection(result.path)"
+                  />
+                  <i :class="fileIconByName(result.path)" style="width: 16px"></i>
+                  <div class="search-result-info">
+                    <span class="file-name">{{ result.path }}</span>
+                    <span v-if="result.type === 'content'" class="search-result-line">
+                      L{{ result.line }}: {{ result.text }}
+                    </span>
+                  </div>
+                  <span class="search-result-badge" :class="result.type === 'file' ? 'badge-file' : 'badge-content'">
+                    {{ result.type === 'file' ? 'name' : 'content' }}
+                  </span>
+                </div>
               </div>
-              <span class="search-result-badge" :class="result.type === 'file' ? 'badge-file' : 'badge-content'">
-                {{ result.type === 'file' ? 'name' : 'content' }}
-              </span>
-            </div>
-          </div>
-        </template>
-
-        <!-- Normal Directory Listing -->
-        <template v-else>
-          <div class="workspace-breadcrumb">
-            <span class="breadcrumb-segment" @click="navigateTo('')">root</span>
-            <template v-for="(seg, i) in pathSegments" :key="i">
-              <span class="breadcrumb-sep">/</span>
-              <span class="breadcrumb-segment" @click="navigateTo(pathSegments.slice(0, i + 1).join('/'))">{{ seg }}</span>
             </template>
-          </div>
-          <div class="workspace-file-list">
-            <div v-if="currentPath" class="workspace-file-item directory" @click="navigateUp">
-              <i class="fa-solid fa-arrow-up" style="width: 16px; color: var(--text-dim)"></i>
-              <span class="file-name">..</span>
-            </div>
-            <div
-              v-for="file in files"
-              :key="file.name"
-              class="workspace-file-item"
-              :class="{ directory: file.isDirectory, clickable: !file.isDirectory }"
-              @click="handleFileClick(file)"
-            >
-              <i :class="fileIcon(file)" style="width: 16px"></i>
-              <span class="file-name">{{ file.name }}</span>
-              <span v-if="!file.isDirectory && file.size != null" class="file-size">{{ formatSize(file.size) }}</span>
-            </div>
-            <div v-if="!listLoading && !files.length" class="workspace-empty">Empty directory</div>
-            <div v-if="listLoading" class="workspace-empty">Loading...</div>
-            <div v-if="listError" class="workspace-empty" style="color: var(--red)">{{ listError }}</div>
-          </div>
-        </template>
-      </template>
 
-      <!-- File View (Editor or Markdown Preview) -->
-      <template v-if="openFile">
-        <div class="workspace-editor-bar">
-          <span class="workspace-editor-filename">
-            <i :class="fileIconByName(openFile)" style="margin-right: 6px"></i>
-            {{ openFile }}
-          </span>
-          <div style="display: flex; gap: 6px; align-items: center">
-            <button v-if="isMarkdown" class="btn-ghost" style="padding: 3px 10px; font-size: 11px" @click="toggleMarkdownEdit">
-              <i :class="markdownEditMode ? 'fa-solid fa-eye' : 'fa-solid fa-pen'" style="margin-right: 4px"></i>
-              {{ markdownEditMode ? 'Preview' : 'Edit Source' }}
-            </button>
-            <span v-if="dirty" class="workspace-dirty-badge">Modified</span>
-            <button v-if="!isMarkdown || markdownEditMode" class="btn-start" :disabled="!dirty || saving" @click="saveFile" style="padding: 4px 12px; font-size: 12px">
-              {{ saving ? 'Saving...' : 'Save' }}
-            </button>
-          </div>
+            <!-- Normal Directory Listing -->
+            <template v-else>
+              <div class="workspace-breadcrumb">
+                <span class="breadcrumb-segment" @click="navigateTo('')">root</span>
+                <template v-for="(seg, i) in pathSegments" :key="i">
+                  <span class="breadcrumb-sep">/</span>
+                  <span class="breadcrumb-segment" @click="navigateTo(pathSegments.slice(0, i + 1).join('/'))">{{ seg }}</span>
+                </template>
+              </div>
+              <div class="workspace-file-list">
+                <div class="workspace-file-list-header">
+                  <input
+                    type="checkbox"
+                    class="workspace-file-checkbox"
+                    :checked="isAllInViewSelected"
+                    @change="toggleSelectAllInView"
+                  />
+                  <span>Name</span>
+                  <span v-if="selectedFiles.length" style="margin-left: auto; text-transform: none; color: var(--blue)">
+                    {{ selectedFiles.length }} selected
+                  </span>
+                </div>
+                <div v-if="currentPath" class="workspace-file-item directory" @click="navigateUp">
+                  <div style="width: 14px; flex-shrink: 0"></div>
+                  <i class="fa-solid fa-arrow-up" style="width: 16px; color: var(--text-dim)"></i>
+                  <span class="file-name">..</span>
+                </div>
+                <div
+                  v-for="file in files"
+                  :key="file.name"
+                  class="workspace-file-item"
+                  :class="{ directory: file.isDirectory, clickable: !file.isDirectory }"
+                  @click="handleFileClick(file)"
+                >
+                  <input
+                    type="checkbox"
+                    class="workspace-file-checkbox"
+                    :checked="selectedFiles.includes(currentPath ? `${currentPath}/${file.name}` : file.name)"
+                    @click.stop="toggleFileSelection(currentPath ? `${currentPath}/${file.name}` : file.name)"
+                  />
+                  <i :class="fileIcon(file)" style="width: 16px"></i>
+                  <span class="file-name">{{ file.name }}</span>
+                  <span v-if="!file.isDirectory && file.size != null" class="file-size">{{ formatSize(file.size) }}</span>
+                </div>
+                <div v-if="!listLoading && !files.length" class="workspace-empty">Empty directory</div>
+                <div v-if="listLoading" class="workspace-empty">Loading...</div>
+                <div v-if="listError" class="workspace-empty" style="color: var(--red)">{{ listError }}</div>
+              </div>
+            </template>
+          </template>
+
+          <!-- File View (Editor or Markdown Preview) -->
+          <template v-if="openFile">
+            <div class="workspace-editor-bar">
+              <span class="workspace-editor-filename">
+                <i :class="fileIconByName(openFile)" style="margin-right: 6px"></i>
+                {{ openFile }}
+              </span>
+              <div style="display: flex; gap: 6px; align-items: center">
+                <button class="btn-ghost" @click="closeFile" style="padding: 3px 10px; font-size: 11px">
+                  <i class="fa-solid fa-arrow-left" style="margin-right: 4px"></i>Back
+                </button>
+                <button v-if="isMarkdown" class="btn-ghost" style="padding: 3px 10px; font-size: 11px" @click="toggleMarkdownEdit">
+                  <i :class="markdownEditMode ? 'fa-solid fa-eye' : 'fa-solid fa-pen'" style="margin-right: 4px"></i>
+                  {{ markdownEditMode ? 'Preview' : 'Edit Source' }}
+                </button>
+                <span v-if="dirty" class="workspace-dirty-badge">Modified</span>
+                <button v-if="!isMarkdown || markdownEditMode" class="btn-start" :disabled="!dirty || saving" @click="saveFile" style="padding: 4px 12px; font-size: 12px">
+                  {{ saving ? 'Saving...' : 'Save' }}
+                </button>
+              </div>
+            </div>
+            <div v-if="fileLoading" class="workspace-empty">Loading file...</div>
+            <div v-if="fileError" class="workspace-empty" style="color: var(--red)">{{ fileError }}</div>
+
+            <!-- Markdown rendered preview -->
+            <div v-if="isMarkdown && !markdownEditMode" ref="mdPreviewRef" class="workspace-md-preview" v-html="renderedMarkdown"></div>
+
+            <!-- Monaco editor -->
+            <div v-show="!isMarkdown || markdownEditMode" ref="editorContainerRef" class="workspace-editor-container"></div>
+          </template>
         </div>
-        <div v-if="fileLoading" class="workspace-empty">Loading file...</div>
-        <div v-if="fileError" class="workspace-empty" style="color: var(--red)">{{ fileError }}</div>
 
-        <!-- Markdown rendered preview -->
-        <div v-if="isMarkdown && !markdownEditMode" ref="mdPreviewRef" class="workspace-md-preview" v-html="renderedMarkdown"></div>
+        <!-- Terminal resizer -->
+        <div v-if="terminalOpen" class="workspace-resizer" @mousedown="startResizing"></div>
 
-        <!-- Monaco editor -->
-        <div v-show="!isMarkdown || markdownEditMode" ref="editorContainerRef" class="workspace-editor-container"></div>
-      </template>
+        <!-- Terminal side panel -->
+        <div v-if="terminalOpen" class="workspace-terminal-panel" :style="{ width: terminalWidth + 'px' }">
+          <div class="workspace-terminal-header">
+            <span><i class="fa-solid fa-terminal" style="margin-right: 6px"></i>Terminal</span>
+            <button class="btn-ghost" style="padding: 2px 8px; font-size: 11px" @click="toggleTerminal">Close</button>
+          </div>
+          <div ref="wsTermContainerRef" class="workspace-terminal-container" @click="focusWsTerm"></div>
+        </div>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup>
 import { ref, watch, computed, nextTick, onUnmounted, shallowRef } from 'vue'
+import { Terminal } from '@xterm/xterm'
+import { FitAddon } from '@xterm/addon-fit'
+import { WebLinksAddon } from '@xterm/addon-web-links'
 import { api } from '../composables/useApi.js'
 
 const props = defineProps({
@@ -138,6 +203,11 @@ function handleOverlayClick() {
     else emit('close')
   }
   overlayMouseDown.value = false
+}
+
+function handleClose() {
+  closeTerminal()
+  emit('close')
 }
 
 // ── Search State ────────────────────────────
@@ -181,11 +251,61 @@ const files = ref([])
 const currentPath = ref('')
 const listLoading = ref(false)
 const listError = ref(null)
+const selectedFiles = ref([])
 
 const pathSegments = computed(() => {
   if (!currentPath.value) return []
   return currentPath.value.split('/').filter(Boolean)
 })
+
+const isAllInViewSelected = computed(() => {
+  if (searchActive.value) {
+    if (searchResults.value.length === 0) return false
+    return searchResults.value.every((r) => selectedFiles.value.includes(r.path))
+  }
+  if (files.value.length === 0) return false
+  return files.value.every((f) => {
+    const fullPath = currentPath.value ? `${currentPath.value}/${f.name}` : f.name
+    return selectedFiles.value.includes(fullPath)
+  })
+})
+
+function toggleSelectAllInView() {
+  if (isAllInViewSelected.value) {
+    if (searchActive.value) {
+      searchResults.value.forEach((r) => {
+        const idx = selectedFiles.value.indexOf(r.path)
+        if (idx !== -1) selectedFiles.value.splice(idx, 1)
+      })
+    } else {
+      files.value.forEach((f) => {
+        const fullPath = currentPath.value ? `${currentPath.value}/${f.name}` : f.name
+        const idx = selectedFiles.value.indexOf(fullPath)
+        if (idx !== -1) selectedFiles.value.splice(idx, 1)
+      })
+    }
+  } else {
+    if (searchActive.value) {
+      searchResults.value.forEach((r) => {
+        if (!selectedFiles.value.includes(r.path)) selectedFiles.value.push(r.path)
+      })
+    } else {
+      files.value.forEach((f) => {
+        const fullPath = currentPath.value ? `${currentPath.value}/${f.name}` : f.name
+        if (!selectedFiles.value.includes(fullPath)) selectedFiles.value.push(fullPath)
+      })
+    }
+  }
+}
+
+function toggleFileSelection(path) {
+  const idx = selectedFiles.value.indexOf(path)
+  if (idx === -1) {
+    selectedFiles.value.push(path)
+  } else {
+    selectedFiles.value.splice(idx, 1)
+  }
+}
 
 async function fetchFiles(subPath) {
   if (!props.nodeName) return
@@ -297,7 +417,6 @@ async function renderMermaidBlocks() {
 
 async function toggleMarkdownEdit() {
   if (markdownEditMode.value) {
-    // Switching from edit to preview — sync editor content
     if (editorInstance) {
       originalContent = dirty.value ? editorInstance.getValue() : originalContent
       renderedMarkdown.value = renderMarkdown(editorInstance.getValue())
@@ -305,7 +424,6 @@ async function toggleMarkdownEdit() {
     markdownEditMode.value = false
     await renderMermaidBlocks()
   } else {
-    // Switching from preview to edit
     markdownEditMode.value = true
     await nextTick()
     if (!editorInstance && editorContainerRef.value) {
@@ -441,6 +559,151 @@ async function saveFile() {
   dirty.value = false
 }
 
+// ── Embedded Terminal ───────────────────────
+const terminalOpen = ref(false)
+const terminalWidth = ref(420)
+const wsTermContainerRef = ref(null)
+
+let isResizing = false
+
+function startResizing(e) {
+  isResizing = true
+  document.addEventListener('mousemove', doResizing)
+  document.addEventListener('mouseup', stopResizing)
+  document.body.style.cursor = 'col-resize'
+  document.body.style.userSelect = 'none'
+}
+
+function doResizing(e) {
+  if (!isResizing) return
+  // Calculate new width: total width - mouse X position
+  // But wait, the modal is centered. It's easier to use the current width and the delta.
+  // Actually, since it's on the right:
+  const modalRect = document.querySelector('.workspace-modal').getBoundingClientRect()
+  const newWidth = modalRect.right - e.clientX
+  if (newWidth > 200 && newWidth < modalRect.width - 200) {
+    terminalWidth.value = newWidth
+    nextTick(() => fitWsTerm())
+  }
+}
+
+function stopResizing() {
+  isResizing = false
+  document.removeEventListener('mousemove', doResizing)
+  document.removeEventListener('mouseup', stopResizing)
+  document.body.style.cursor = ''
+  document.body.style.userSelect = ''
+}
+
+let wsTerm = null
+let wsTermFitAddon = null
+let wsTermWs = null
+let wsTermRetryTimer = null
+let wsTermResizeObserver = null
+
+const TERM_THEME = {
+  background: '#0f1117',
+  foreground: '#e1e4ed',
+  cursor: '#60a5fa',
+  selectionBackground: 'rgba(96, 165, 250, 0.3)',
+  black: '#1a1d27', red: '#f87171', green: '#34d399', yellow: '#fbbf24',
+  blue: '#60a5fa', magenta: '#a78bfa', cyan: '#22d3ee', white: '#e1e4ed',
+  brightBlack: '#8b8fa3', brightRed: '#fca5a5', brightGreen: '#6ee7b7', brightYellow: '#fde68a',
+  brightBlue: '#93c5fd', brightMagenta: '#c4b5fd', brightCyan: '#67e8f9', brightWhite: '#f8fafc',
+}
+
+async function toggleTerminal() {
+  if (terminalOpen.value) {
+    closeTerminal()
+  } else {
+    terminalOpen.value = true
+    await nextTick()
+    createWsTerm()
+    connectWsTerm(props.nodeName)
+  }
+}
+
+function createWsTerm() {
+  if (wsTerm || !wsTermContainerRef.value) return
+  wsTerm = new Terminal({
+    cursorBlink: true,
+    fontSize: 13,
+    fontFamily: "'SF Mono', 'Fira Code', 'Cascadia Code', 'Menlo', monospace",
+    theme: TERM_THEME,
+    allowProposedApi: true,
+  })
+
+  wsTermFitAddon = new FitAddon()
+  wsTerm.loadAddon(wsTermFitAddon)
+  wsTerm.loadAddon(new WebLinksAddon())
+  wsTerm.open(wsTermContainerRef.value)
+  fitWsTerm()
+
+  wsTermResizeObserver = new ResizeObserver(() => fitWsTerm())
+  wsTermResizeObserver.observe(wsTermContainerRef.value)
+
+  wsTerm.onResize(({ cols, rows }) => {
+    if (wsTermWs && wsTermWs.readyState === 1) {
+      wsTermWs.send(JSON.stringify({ type: 'resize', cols, rows }))
+    }
+  })
+
+  wsTerm.onData((data) => {
+    if (wsTermWs && wsTermWs.readyState === 1) {
+      wsTermWs.send(JSON.stringify({ type: 'input', data }))
+    }
+  })
+}
+
+function fitWsTerm() {
+  if (!wsTermFitAddon || !wsTerm) return
+  try { wsTermFitAddon.fit() } catch {}
+}
+
+function focusWsTerm() {
+  if (wsTerm) wsTerm.focus()
+}
+
+function connectWsTerm(name) {
+  disconnectWsTerm()
+  if (!name) return
+
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
+  const url = `${proto}//${location.host}/ws/terminal?name=${encodeURIComponent(name)}`
+  const localWs = new WebSocket(url)
+  wsTermWs = localWs
+
+  localWs.onmessage = (ev) => {
+    if (wsTermWs === localWs && wsTerm) wsTerm.write(ev.data)
+  }
+
+  localWs.onclose = () => {
+    if (wsTermWs !== localWs) return
+    wsTermWs = null
+    if (terminalOpen.value && props.nodeName === name) {
+      wsTermRetryTimer = setTimeout(() => connectWsTerm(name), 1500)
+    }
+  }
+
+  localWs.onerror = () => {}
+}
+
+function disconnectWsTerm() {
+  if (wsTermRetryTimer) { clearTimeout(wsTermRetryTimer); wsTermRetryTimer = null }
+  if (wsTermWs) { wsTermWs.close(); wsTermWs = null }
+}
+
+function destroyWsTerm() {
+  if (wsTermResizeObserver) { wsTermResizeObserver.disconnect(); wsTermResizeObserver = null }
+  if (wsTerm) { wsTerm.dispose(); wsTerm = null; wsTermFitAddon = null }
+}
+
+function closeTerminal() {
+  terminalOpen.value = false
+  disconnectWsTerm()
+  destroyWsTerm()
+}
+
 // ── Icon Helpers ────────────────────────────
 function fileIcon(file) {
   if (file.isDirectory) return 'fa-solid fa-folder file-icon-dir'
@@ -467,15 +730,21 @@ watch(() => props.show, (val) => {
   if (val && props.nodeName) {
     currentPath.value = ''
     openFile.value = null
+    selectedFiles.value = []
     clearSearch()
     fetchFiles('')
   } else if (!val) {
     disposeEditor()
+    closeTerminal()
     openFile.value = null
+    selectedFiles.value = []
     markdownEditMode.value = false
     renderedMarkdown.value = ''
   }
 })
 
-onUnmounted(() => { disposeEditor() })
+onUnmounted(() => {
+  disposeEditor()
+  closeTerminal()
+})
 </script>

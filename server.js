@@ -590,6 +590,59 @@ app.put('/api/processes/:name/file', (req, res) => {
   }
 });
 
+app.post('/api/processes/:name/ai-command', (req, res) => {
+  const name = req.params.name;
+  const config = processConfigs.find(c => c.name === name);
+  if (!config || !config.cwd) return res.status(404).json({ error: 'Process or CWD not found' });
+
+  const resolvedCwd = resolveTemplate(config.cwd);
+  const { prompt, files, tool } = req.body;
+  if (!files || !Array.isArray(files)) {
+    return res.status(400).json({ error: 'files array is required' });
+  }
+
+  let combinedContext = prompt ? `Prompt:\n${prompt}\n\nContext files:\n\n` : "Context files:\n\n";
+
+  for (const file of files) {
+    const fullPath = path.resolve(resolvedCwd, file);
+    if (!fullPath.startsWith(resolvedCwd)) {
+      return res.status(403).json({ error: `Access denied for file ${file}` });
+    }
+    try {
+      const content = fs.readFileSync(fullPath, 'utf-8');
+      combinedContext += `--- FILE: ${file} ---\n${content}\n\n`;
+    } catch (err) {
+      combinedContext += `--- FILE: ${file} ---\n(Failed to read: ${err.message})\n\n`;
+    }
+  }
+
+  const executable = tool === 'claude' ? 'claude' : 'gemini'; 
+  
+  const proc = spawn(executable, [], {
+    cwd: resolvedCwd,
+    env: process.env
+  });
+
+  res.setHeader('Content-Type', 'text/plain');
+  res.setHeader('Transfer-Encoding', 'chunked');
+
+  proc.stdout.on('data', (data) => res.write(data));
+  proc.stderr.on('data', (data) => res.write(`[STDERR] ${data}`));
+  
+  proc.on('close', (code) => {
+    res.end();
+  });
+  
+  proc.on('error', (err) => {
+    res.write(`\n[Error starting CLI: ${err.message}]\nEnsure '${executable}' is installed and in your PATH.`);
+    res.end();
+  });
+
+  // Pass the generated context to the CLI via stdin
+  proc.stdin.write(combinedContext);
+  proc.stdin.end();
+});
+
 app.get('/api/processes/:name/git/branches', async (req, res) => {
   const name = req.params.name;
   const config = processConfigs.find(c => c.name === name);
