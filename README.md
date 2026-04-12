@@ -58,3 +58,13 @@ The UI is served from `public/`; the API and static files are handled by `server
 
 - **Server exits on start** — Ensure `processes.config.json` exists and parses as JSON (a top-level array).
 - **Port in use** — Change `PORT` in `server.js` or stop the other process using that port.
+
+## Disclaimer
+
+This software is provided for **legitimate system administration and development purposes only**. It executes arbitrary commands as configured by the user and provides no sandboxing, authentication, or encryption by default. Do not expose it to untrusted networks.
+
+The authors assume **no responsibility or liability** for any misuse, damage, or legal consequences. See [NOTICE](NOTICE) for full details.
+
+## License
+
+[MIT](LICENSE)

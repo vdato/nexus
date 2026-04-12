@@ -42,6 +42,7 @@
           @hover-enter="(name, el) => $emit('hover-enter', name, el)"
           @hover-leave="$emit('hover-leave')"
           @branch-click="$emit('branch-click', $event)"
+          @open-workspace="$emit('open-workspace', $event)"
         />
       </div>
     </template>
@@ -59,7 +60,7 @@ const props = defineProps({
   viewMode: { type: String, default: 'group' },
 })
 
-const emit = defineEmits(['select', 'start', 'stop', 'restart', 'edit', 'hover-enter', 'hover-leave', 'reorder', 'reorder-groups', 'move-to-group', 'branch-click'])
+const emit = defineEmits(['select', 'start', 'stop', 'restart', 'edit', 'hover-enter', 'hover-leave', 'reorder', 'reorder-groups', 'move-to-group', 'branch-click', 'open-workspace'])
 
 // ── Card Drag and Drop ─────────────────────
 const dragName = ref(null)
