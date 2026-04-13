@@ -1,11 +1,12 @@
 <template>
   <div
+    ref="cardRef"
     class="card"
     :class="{ selected: isSelected, expanded }"
     :style="{ borderColor, '--card-color': borderColor }"
     @click="$emit('select', node.name)"
-    @mouseenter="!expanded && $emit('hover-enter', node.name, $event.currentTarget)"
-    @mouseleave="!expanded && $emit('hover-leave')"
+    @mouseenter="$emit('hover-enter', node.name, $event.currentTarget, expanded)"
+    @mouseleave="!expanded && $emit('hover-leave', node.name)"
   >
     <div class="card-header">
       <div class="card-name">
@@ -57,31 +58,6 @@
       </div>
     </div>
 
-    <!-- Inline Log Tray -->
-    <div v-if="expanded" class="card-log-tray" @click.stop>
-      <!-- xterm.js for PTY nodes -->
-      <div
-        v-if="node.usePty"
-        ref="xtermContainerRef"
-        class="card-xterm-container"
-        tabindex="0"
-        @click="focusTerminal"
-      ></div>
-
-      <!-- HTML logs for non-PTY nodes -->
-      <div v-if="!node.usePty" ref="logTrayBody" class="card-log-body">
-        <div
-          v-for="(entry, i) in cardLogs"
-          :key="i"
-          class="log-line"
-          :class="entry.source"
-          v-html="formatAnsi(entry.text)"
-        ></div>
-        <div v-if="!cardLogs.length" class="card-log-empty">No logs yet.</div>
-      </div>
-
-    </div>
-
     <!-- Bottom Expand Button -->
     <button
       class="card-expand-indicator"
@@ -98,18 +74,9 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onUnmounted, nextTick } from 'vue'
-import { AnsiUp } from 'ansi_up'
-import { Terminal } from '@xterm/xterm'
-import { FitAddon } from '@xterm/addon-fit'
+import { ref, computed, onUnmounted } from 'vue'
 import { api } from '../composables/useApi.js'
 import { useAlert } from '../composables/useAlert.js'
-
-const ansiUp = new AnsiUp()
-function formatAnsi(text) {
-  if (!text) return ''
-  return ansiUp.ansi_to_html(text)
-}
 
 const props = defineProps({
   node: { type: Object, required: true },
@@ -121,19 +88,9 @@ const emit = defineEmits(['select', 'start', 'stop', 'restart', 'edit', 'hover-e
 
 const { showAlert } = useAlert()
 
+const cardRef = ref(null)
 const expanded = ref(false)
 const gitRemoteStatus = ref(null)
-const cardLogs = ref([])
-const logTrayBody = ref(null)
-const xtermContainerRef = ref(null)
-let logSince = 0
-let pollTimer = null
-
-// xterm state
-let term = null
-let fitAddon = null
-let ws = null
-let resizeObserver = null
 
 function formatUptime(ms) {
   if (!ms) return '-'
@@ -161,193 +118,15 @@ const uptime = computed(() => {
   return '-'
 })
 
-// ── xterm.js for PTY ───────────────────────
-function createCardTerminal() {
-  if (term) {
-    if (xtermContainerRef.value && !term.element) {
-      term.open(xtermContainerRef.value)
-      setupResizeObserver()
-      fitWide()
-    }
-    return
-  }
-  if (!xtermContainerRef.value) return
-
-  term = new Terminal({
-    cursorBlink: true,
-    fontSize: 11,
-    fontFamily: "'SF Mono', 'Fira Code', 'Cascadia Code', 'Menlo', monospace",
-    theme: {
-      background: '#0f1117',
-      foreground: '#e1e4ed',
-      cursor: '#60a5fa',
-      selectionBackground: 'rgba(96, 165, 250, 0.3)',
-      black: '#1a1d27',
-      red: '#f87171',
-      green: '#34d399',
-      yellow: '#fbbf24',
-      blue: '#60a5fa',
-      magenta: '#a78bfa',
-      cyan: '#22d3ee',
-      white: '#e1e4ed',
-      brightBlack: '#8b8fa3',
-      brightRed: '#fca5a5',
-      brightGreen: '#6ee7b7',
-      brightYellow: '#fde68a',
-      brightBlue: '#93c5fd',
-      brightMagenta: '#c4b5fd',
-      brightCyan: '#67e8f9',
-      brightWhite: '#f8fafc',
-    },
-    allowProposedApi: true,
-  })
-
-  fitAddon = new FitAddon()
-  term.loadAddon(fitAddon)
-  
-  // ALWAYS open before anything else
-  term.open(xtermContainerRef.value)
-  setupResizeObserver()
-
-  term.onResize(({ cols, rows }) => {
-    if (ws && ws.readyState === 1) {
-      ws.send(JSON.stringify({ type: 'resize', cols, rows }))
-    }
-  })
-
-  term.onData((data) => {
-    // Filter out automatic terminal identification responses that can cause loops
-    if (data === '\x1b[?1;2c' || data === '\x1b[?62;c' || data === '\x1b[?6c') {
-      return
-    }
-    if (ws && ws.readyState === 1) {
-      ws.send(JSON.stringify({ type: 'input', data }))
-    }
-  })
-
-  fitWide()
-}
-
-function setupResizeObserver() {
-  if (resizeObserver) {
-    resizeObserver.disconnect()
-  }
-  if (!xtermContainerRef.value) return
-  resizeObserver = new ResizeObserver(() => {
-    fitWide()
-  })
-  resizeObserver.observe(xtermContainerRef.value)
-}
-
-const WIDE_COLS = 200
-
-function fitWide() {
-  if (!fitAddon || !term || !term.element) return
-  const dims = fitAddon.proposeDimensions()
-  if (dims && dims.cols > 0 && dims.rows > 0) {
-    term.resize(WIDE_COLS, dims.rows)
-  } else {
-    // Retry once if zero dimensions
-    setTimeout(() => {
-      if (!fitAddon || !term) return
-      const d2 = fitAddon.proposeDimensions()
-      if (d2 && d2.cols > 0 && d2.rows > 0) term.resize(WIDE_COLS, d2.rows)
-    }, 50)
-  }
-}
-
-function focusTerminal() {
-  if (term) term.focus()
-}
-
-function destroyCardTerminal() {
-  if (resizeObserver) { resizeObserver.disconnect(); resizeObserver = null }
-  if (term) { term.dispose(); term = null; fitAddon = null }
-}
-
-let wsRetryTimer = null
-
-function connectWs(name) {
-  disconnectWs()
-  if (!name || !expanded.value) return
-  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
-  const url = `${proto}//${location.host}/ws/terminal?name=${encodeURIComponent(name)}`
-  const localWs = new WebSocket(url)
-  ws = localWs
-  localWs.onopen = () => {
-    if (term) fitWide()
-  }
-  localWs.onmessage = (ev) => { if (ws === localWs && term) term.write(ev.data) }
-  localWs.onclose = () => {
-    if (ws !== localWs) return
-    ws = null
-    if (expanded.value) {
-      wsRetryTimer = setTimeout(() => connectWs(name), 1500)
-    }
-  }
-  localWs.onerror = () => {}
-}
-
-function disconnectWs() {
-  if (wsRetryTimer) { clearTimeout(wsRetryTimer); wsRetryTimer = null }
-  if (ws) { ws.close(); ws = null }
-}
-
-
-// ── HTML logs for non-PTY ──────────────────
-async function fetchCardLogs() {
-  const logs = await api(
-    `/api/processes/${encodeURIComponent(props.node.name)}/logs?since=${logSince}`
-  )
-  if (!Array.isArray(logs)) return
-
-  for (const entry of logs) {
-    cardLogs.value.push(entry)
-    logSince = Math.max(logSince, entry.ts)
-  }
-
-  if (cardLogs.value.length > 300) {
-    cardLogs.value = cardLogs.value.slice(-300)
-  }
-
-  await nextTick()
-  if (logTrayBody.value) {
-    logTrayBody.value.scrollTop = logTrayBody.value.scrollHeight
-  }
-}
-
-function startPolling() {
-  stopPolling()
-  fetchCardLogs()
-  pollTimer = setInterval(fetchCardLogs, 800)
-}
-
-function stopPolling() {
-  if (pollTimer) {
-    clearInterval(pollTimer)
-    pollTimer = null
-  }
-}
-
 // ── Expand / Collapse ──────────────────────
-async function toggleExpand() {
-  emit('hover-leave')
+function toggleExpand() {
   expanded.value = !expanded.value
   if (expanded.value) {
-    if (props.node.usePty) {
-      await nextTick()
-      createCardTerminal()
-      connectWs(props.node.name)
-    } else {
-      logSince = 0
-      cardLogs.value = []
-      startPolling()
-    }
+    // Show popover immediately when expanded
+    emit('hover-enter', props.node.name, cardRef.value, true)
   } else {
-    disconnectWs()
-    destroyCardTerminal()
-    stopPolling()
-    cardLogs.value = []
+    // Hide popover immediately when collapsed
+    emit('hover-leave', props.node.name, true)
   }
 }
 
@@ -379,8 +158,5 @@ async function pullGitChanges() {
 }
 
 onUnmounted(() => {
-  stopPolling()
-  disconnectWs()
-  destroyCardTerminal()
 })
 </script>

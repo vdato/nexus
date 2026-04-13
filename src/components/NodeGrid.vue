@@ -42,8 +42,8 @@
           @stop="$emit('stop', $event)"
           @restart="$emit('restart', $event)"
           @edit="$emit('edit', $event)"
-          @hover-enter="(name, el) => $emit('hover-enter', name, el)"
-          @hover-leave="$emit('hover-leave')"
+          @hover-enter="(...args) => $emit('hover-enter', ...args)"
+          @hover-leave="(...args) => $emit('hover-leave', ...args)"
           @branch-click="$emit('branch-click', $event)"
           @open-workspace="$emit('open-workspace', $event)"
         />

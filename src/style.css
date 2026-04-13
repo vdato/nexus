@@ -504,45 +504,6 @@ button:active {
   border-color: #444860;
 }
 
-/* ── Card Log Tray ────────────────────────── */
-.card-log-tray {
-  margin-top: 10px;
-  border-top: 1px solid var(--border);
-  padding-top: 8px;
-}
-
-.card-log-body {
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 8px 10px;
-  max-height: 200px;
-  overflow-y: auto;
-  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
-  font-size: 11px;
-  line-height: 1.5;
-}
-
-.card-log-empty {
-  color: var(--text-dim);
-  font-style: italic;
-  font-size: 11px;
-}
-
-.card-xterm-container {
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  height: 250px;
-  overflow-x: auto;
-  overflow-y: hidden;
-  padding: 4px;
-}
-
-.card-xterm-container .xterm {
-  height: 100%;
-}
-
 /* ── Stdin Input ──────────────────────────── */
 .stdin-input-row {
   display: flex;
@@ -1159,8 +1120,7 @@ button:active {
 .log-popover {
   position: fixed;
   z-index: 19;
-  width: min(420px, calc(100vw - 24px));
-  max-height: min(280px, 40vh);
+  height: min(280px, 40vh);
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -1207,8 +1167,10 @@ button:active {
 
 .log-popover-body {
   flex: 1;
-  overflow-y: auto;
-  padding: 8px 12px;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0;
+  background: #0f1117;
   font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
   font-size: 11px;
   line-height: 1.5;

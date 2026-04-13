@@ -6,6 +6,7 @@ export function usePopover() {
   const popoverName = ref(null)
   const popoverLogs = ref([])
   const popoverStyle = ref({ left: '0px', top: '0px' })
+  const isPinned = ref(false)
 
   let popoverSince = 0
   let popoverShowTimer = null
@@ -27,19 +28,32 @@ export function usePopover() {
     if (!popoverEl) return
     const rect = anchorEl.getBoundingClientRect()
     const margin = 8
-    const w = popoverEl.offsetWidth || 400
+    const cardWidth = rect.width
     const h = popoverEl.offsetHeight || 200
     let left = rect.left
     let top = rect.bottom + margin
 
-    if (left + w > window.innerWidth - 12) left = window.innerWidth - w - 12
+    // Ensure it doesn't go off-screen horizontally
+    if (left + cardWidth > window.innerWidth - 12) {
+      left = window.innerWidth - cardWidth - 12
+    }
     if (left < 12) left = 12
+
+    // Vertical positioning
     if (top + h > window.innerHeight - 12) {
       top = rect.top - margin - h
     }
     if (top < 12) top = 12
 
-    popoverStyle.value = { left: left + 'px', top: top + 'px' }
+    // Extract actual border color from the card
+    const borderColor = window.getComputedStyle(anchorEl).borderColor || '#2e3144'
+
+    popoverStyle.value = { 
+      left: left + 'px', 
+      top: top + 'px',
+      width: cardWidth + 'px',
+      borderColor
+    }
   }
 
   async function fetchPopoverLogs() {
@@ -89,6 +103,7 @@ export function usePopover() {
   }
 
   function hideLogPopover() {
+    isPinned.value = false
     clearTimeout(popoverShowTimer)
     popoverShowTimer = null
     clearTimeout(popoverHideTimer)
@@ -105,6 +120,7 @@ export function usePopover() {
   }
 
   function schedulePopoverHide() {
+    if (isPinned.value) return
     clearTimeout(popoverHideTimer)
     popoverHideTimer = setTimeout(() => {
       popoverHideTimer = null
@@ -117,16 +133,37 @@ export function usePopover() {
     popoverHideTimer = null
   }
 
-  function onCardHoverEnter(name, cardEl) {
+  function onCardHoverEnter(name, cardEl, immediate = false) {
     cancelPopoverHide()
+    if (popoverVisible.value && popoverName.value === name) {
+      if (immediate) isPinned.value = true
+      return
+    }
     clearTimeout(popoverShowTimer)
+    if (immediate) {
+      popoverShowTimer = null
+      openLogPopover(name, cardEl)
+      isPinned.value = true
+      return
+    }
+    isPinned.value = false
     popoverShowTimer = setTimeout(() => {
       popoverShowTimer = null
       openLogPopover(name, cardEl)
     }, 1000)
   }
 
-  function onCardHoverLeave() {
+  function onCardHoverLeave(name, force = false) {
+    if (name && popoverName.value !== name) {
+      return
+    }
+    if (force) {
+      hideLogPopover()
+      return
+    }
+    if (isPinned.value) {
+      return
+    }
     clearTimeout(popoverShowTimer)
     popoverShowTimer = null
     schedulePopoverHide()
