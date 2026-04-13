@@ -251,6 +251,10 @@ button:active {
   align-items: start;
 }
 
+.card-agent {
+  grid-column: span 2;
+}
+
 /* ── Cards ────────────────────────────────── */
 .card {
   background: var(--surface);

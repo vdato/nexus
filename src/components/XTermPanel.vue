@@ -100,6 +100,11 @@ function createTerminal() {
 
   // Send keyboard input to server
   term.onData((data) => {
+    // Filter out automatic terminal identification responses that can cause loops
+    // especially with processes that echo stdin or are not in raw mode.
+    if (data === '\x1b[?1;2c' || data === '\x1b[?62;c' || data === '\x1b[?6c') {
+      return
+    }
     if (ws && ws.readyState === 1) {
       ws.send(JSON.stringify({ type: 'input', data }))
     }
