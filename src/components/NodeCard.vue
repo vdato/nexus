@@ -20,6 +20,9 @@
         <template v-else>
           <button class="btn-start btn-icon" @click.stop="$emit('start', node.name)" title="Start"><i class="fa-solid fa-play"></i></button>
         </template>
+        <button v-if="node.cwd" class="btn-icon btn-workspace" @click.stop="$emit('open-workspace', node)" title="Open Workspace">
+          <i class="fa-solid fa-folder-open"></i>
+        </button>
         <button class="btn-gear" @click.stop="$emit('edit', node.name)">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="3"/>
@@ -57,7 +60,13 @@
     <!-- Inline Log Tray -->
     <div v-if="expanded" class="card-log-tray" @click.stop>
       <!-- xterm.js for PTY nodes -->
-      <div v-if="node.usePty" ref="xtermContainerRef" class="card-xterm-container" @click="focusTerminal"></div>
+      <div
+        v-if="node.usePty"
+        ref="xtermContainerRef"
+        class="card-xterm-container"
+        tabindex="0"
+        @click="focusTerminal"
+      ></div>
 
       <!-- HTML logs for non-PTY nodes -->
       <div v-if="!node.usePty" ref="logTrayBody" class="card-log-body">
@@ -108,7 +117,7 @@ const props = defineProps({
   isSelected: { type: Boolean, default: false },
 })
 
-const emit = defineEmits(['select', 'start', 'stop', 'restart', 'edit', 'hover-enter', 'hover-leave', 'branch-click'])
+const emit = defineEmits(['select', 'start', 'stop', 'restart', 'edit', 'hover-enter', 'hover-leave', 'branch-click', 'open-workspace'])
 
 const { showAlert } = useAlert()
 
@@ -154,7 +163,16 @@ const uptime = computed(() => {
 
 // ── xterm.js for PTY ───────────────────────
 function createCardTerminal() {
-  if (term || !xtermContainerRef.value) return
+  if (term) {
+    if (xtermContainerRef.value && !term.element) {
+      term.open(xtermContainerRef.value)
+      setupResizeObserver()
+      fitWide()
+    }
+    return
+  }
+  if (!xtermContainerRef.value) return
+
   term = new Terminal({
     cursorBlink: true,
     fontSize: 11,
@@ -186,13 +204,10 @@ function createCardTerminal() {
 
   fitAddon = new FitAddon()
   term.loadAddon(fitAddon)
+  
+  // ALWAYS open before anything else
   term.open(xtermContainerRef.value)
-  fitWide()
-
-  resizeObserver = new ResizeObserver(() => {
-    fitWide()
-  })
-  resizeObserver.observe(xtermContainerRef.value)
+  setupResizeObserver()
 
   term.onResize(({ cols, rows }) => {
     if (ws && ws.readyState === 1) {
@@ -201,19 +216,43 @@ function createCardTerminal() {
   })
 
   term.onData((data) => {
+    // Filter out automatic terminal identification responses that can cause loops
+    if (data === '\x1b[?1;2c' || data === '\x1b[?62;c' || data === '\x1b[?6c') {
+      return
+    }
     if (ws && ws.readyState === 1) {
       ws.send(JSON.stringify({ type: 'input', data }))
     }
   })
+
+  fitWide()
+}
+
+function setupResizeObserver() {
+  if (resizeObserver) {
+    resizeObserver.disconnect()
+  }
+  if (!xtermContainerRef.value) return
+  resizeObserver = new ResizeObserver(() => {
+    fitWide()
+  })
+  resizeObserver.observe(xtermContainerRef.value)
 }
 
 const WIDE_COLS = 200
 
 function fitWide() {
-  if (!fitAddon || !term) return
+  if (!fitAddon || !term || !term.element) return
   const dims = fitAddon.proposeDimensions()
-  if (dims) {
+  if (dims && dims.cols > 0 && dims.rows > 0) {
     term.resize(WIDE_COLS, dims.rows)
+  } else {
+    // Retry once if zero dimensions
+    setTimeout(() => {
+      if (!fitAddon || !term) return
+      const d2 = fitAddon.proposeDimensions()
+      if (d2 && d2.cols > 0 && d2.rows > 0) term.resize(WIDE_COLS, d2.rows)
+    }, 50)
   }
 }
 
@@ -233,23 +272,27 @@ function connectWs(name) {
   if (!name || !expanded.value) return
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
   const url = `${proto}//${location.host}/ws/terminal?name=${encodeURIComponent(name)}`
-  ws = new WebSocket(url)
-  ws.onopen = () => {}
-  ws.onmessage = (ev) => { if (term) term.write(ev.data) }
-  ws.onclose = () => {
+  const localWs = new WebSocket(url)
+  ws = localWs
+  localWs.onopen = () => {
+    if (term) fitWide()
+  }
+  localWs.onmessage = (ev) => { if (ws === localWs && term) term.write(ev.data) }
+  localWs.onclose = () => {
+    if (ws !== localWs) return
     ws = null
-    // Retry connection if still expanded (process may not be ready yet)
     if (expanded.value) {
       wsRetryTimer = setTimeout(() => connectWs(name), 1500)
     }
   }
-  ws.onerror = () => {}
+  localWs.onerror = () => {}
 }
 
 function disconnectWs() {
   if (wsRetryTimer) { clearTimeout(wsRetryTimer); wsRetryTimer = null }
   if (ws) { ws.close(); ws = null }
 }
+
 
 // ── HTML logs for non-PTY ──────────────────
 async function fetchCardLogs() {

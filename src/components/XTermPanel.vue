@@ -13,7 +13,12 @@
       <span>Terminal — {{ nodeName }}</span>
       <button class="btn-ghost" @click="$emit('close')" style="margin-left: auto">Close</button>
     </div>
-    <div ref="termContainerRef" class="xterm-container" @click="focusTerminal"></div>
+    <div
+      ref="termContainerRef"
+      class="xterm-container"
+      tabindex="0"
+      @click="focusTerminal"
+    ></div>
   </div>
 </template>
 
@@ -39,7 +44,16 @@ let ws = null
 let resizeObserver = null
 
 function createTerminal() {
-  if (term) return
+  if (term) {
+    if (termContainerRef.value && !term.element) {
+      term.open(termContainerRef.value)
+      setupResizeObserver()
+      fitWide()
+    }
+    return
+  }
+  if (!termContainerRef.value) return
+
   term = new Terminal({
     cursorBlink: true,
     fontSize: 13,
@@ -73,14 +87,9 @@ function createTerminal() {
   term.loadAddon(fitAddon)
   term.loadAddon(new WebLinksAddon())
 
+  // ALWAYS open before anything else
   term.open(termContainerRef.value)
-  fitWide()
-
-  // Watch for container size changes
-  resizeObserver = new ResizeObserver(() => {
-    fitWide()
-  })
-  resizeObserver.observe(termContainerRef.value)
+  setupResizeObserver()
 
   // Send terminal size changes to server
   term.onResize(({ cols, rows }) => {
@@ -91,14 +100,34 @@ function createTerminal() {
 
   // Send keyboard input to server
   term.onData((data) => {
+    // Filter out automatic terminal identification responses that can cause loops
+    // especially with processes that echo stdin or are not in raw mode.
+    if (data === '\x1b[?1;2c' || data === '\x1b[?62;c' || data === '\x1b[?6c') {
+      return
+    }
     if (ws && ws.readyState === 1) {
       ws.send(JSON.stringify({ type: 'input', data }))
     }
   })
+
+  fitWide()
+}
+
+function setupResizeObserver() {
+  if (resizeObserver) {
+    resizeObserver.disconnect()
+  }
+  if (!termContainerRef.value) return
+  resizeObserver = new ResizeObserver(() => {
+    fitWide()
+  })
+  resizeObserver.observe(termContainerRef.value)
 }
 
 function focusTerminal() {
-  if (term) term.focus()
+  if (term) {
+    term.focus()
+  }
 }
 
 function destroyTerminal() {
@@ -117,17 +146,18 @@ function connectWs(name) {
   const localWs = new WebSocket(url)
   ws = localWs
 
-  localWs.onopen = () => {}
+  localWs.onopen = () => {
+    // If we have an open socket and a term, ensure dimensions are sent
+    if (term) fitWide()
+  }
 
   localWs.onmessage = (ev) => {
     if (ws === localWs && term) term.write(ev.data)
   }
 
   localWs.onclose = () => {
-    // Ignore close events from a stale socket (superseded by a newer connectWs call)
     if (ws !== localWs) return
     ws = null
-    // Retry only if the panel is still showing the same node
     if (props.nodeName === name) {
       wsRetryTimer = setTimeout(() => connectWs(name), 1500)
     }
@@ -143,7 +173,6 @@ function disconnectWs() {
 // When nodeName changes, reconnect
 watch(() => props.nodeName, async (name, oldName) => {
   if (name && name !== oldName) {
-    await nextTick()
     if (!term) createTerminal()
     else { term.clear(); fitWide() }
     connectWs(name)
@@ -152,15 +181,22 @@ watch(() => props.nodeName, async (name, oldName) => {
   } else if (!name) {
     disconnectWs()
   }
-}, { immediate: true })
+}, { immediate: false })
 
 const WIDE_COLS = 200
 
 function fitWide() {
-  if (!fitAddon || !term) return
+  if (!fitAddon || !term || !term.element) return
   const dims = fitAddon.proposeDimensions()
-  if (dims) {
+  if (dims && dims.cols > 0 && dims.rows > 0) {
     term.resize(WIDE_COLS, dims.rows)
+  } else {
+    // Retry once if zero dimensions (often means container not yet visible)
+    setTimeout(() => {
+      if (!fitAddon || !term) return
+      const d2 = fitAddon.proposeDimensions()
+      if (d2 && d2.cols > 0 && d2.rows > 0) term.resize(WIDE_COLS, d2.rows)
+    }, 50)
   }
 }
 
@@ -169,10 +205,13 @@ watch(() => props.panelHeight, () => {
   nextTick(() => fitWide())
 })
 
-onMounted(() => {
+onMounted(async () => {
   if (props.nodeName) {
+    await nextTick()
     createTerminal()
     connectWs(props.nodeName)
+    await nextTick()
+    focusTerminal()
   }
 })
 

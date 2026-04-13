@@ -43,6 +43,7 @@
       @reorder-groups="handleReorderGroups"
       @move-to-group="handleMoveToGroup"
       @branch-click="openBranchModal"
+      @open-workspace="openWorkspaceModal"
     />
   </div>
 
@@ -99,6 +100,14 @@
     @checkout="handleCheckoutBranch"
   />
 
+  <WorkspaceModal
+    :show="workspaceModalStore.show"
+    :node-name="workspaceModalStore.nodeName"
+    :node-status="workspaceModalStatus"
+    @close="closeWorkspaceModal"
+    @start-node="handleStart"
+  />
+
   <AlertModal />
 
 
@@ -124,7 +133,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, nextTick, defineAsyncComponent } from 'vue'
 
 import AppHeader from './components/AppHeader.vue'
 import NodeGrid from './components/NodeGrid.vue'
@@ -135,6 +144,7 @@ import NodeModal from './components/NodeModal.vue'
 import SettingsModal from './components/SettingsModal.vue'
 import BranchModal from './components/BranchModal.vue'
 import AlertModal from './components/AlertModal.vue'
+const WorkspaceModal = defineAsyncComponent(() => import('./components/WorkspaceModal.vue'))
 
 import { useNodes } from './composables/useNodes.js'
 import { useLogs } from './composables/useLogs.js'
@@ -332,6 +342,28 @@ async function handleCheckoutBranch(branch) {
   }
   closeBranchModal()
   await nodeStore.refresh(true)
+}
+
+// ── Workspace Modal ─────────────────────────
+const workspaceModalStore = reactive({
+  show: false,
+  nodeName: null,
+})
+
+const workspaceModalStatus = computed(() => {
+  if (!workspaceModalStore.nodeName) return null
+  const node = nodeStore.nodes.value.find(n => n.name === workspaceModalStore.nodeName)
+  return node?.status || 'stopped'
+})
+
+function openWorkspaceModal(node) {
+  workspaceModalStore.nodeName = node.name
+  workspaceModalStore.show = true
+}
+
+function closeWorkspaceModal() {
+  workspaceModalStore.show = false
+  workspaceModalStore.nodeName = null
 }
 
 // ── Logs ────────────────────────────────────

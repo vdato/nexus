@@ -1,0 +1,33 @@
+DISCLAIMER
+
+This software is provided for legitimate system administration, development,
+and operational purposes only. It is designed to manage local development
+processes and services on machines you own or are authorized to administer.
+
+By using this software, you agree that:
+
+1. You will only use it on systems you own or have explicit authorization to
+   manage.
+
+2. You will not use it to launch, manage, or orchestrate processes for any
+   unlawful, unauthorized, or malicious purpose, including but not limited to:
+   - Unauthorized access to computer systems or networks
+   - Denial-of-service attacks
+   - Cryptocurrency mining on unauthorized infrastructure
+   - Distribution of malware or malicious payloads
+   - Any activity that violates applicable local, state, national, or
+     international law
+
+3. The authors and contributors assume NO responsibility or liability for any
+   misuse, damage, or legal consequences resulting from the use of this
+   software. All liability for misuse rests solely with the end user.
+
+4. This software executes arbitrary commands and processes as configured by the
+   user. It does not sandbox or restrict what those processes can do. Users are
+   responsible for the security implications of their configurations.
+
+5. This software is intended for use on local or trusted networks. It does not
+   provide authentication or encryption by default. Do not expose it to the
+   public internet without appropriate security measures.
+
+USE AT YOUR OWN RISK.

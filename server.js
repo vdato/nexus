@@ -131,6 +131,14 @@ function broadcastPtyData(name, data) {
   }
 }
 
+function disconnectPtyClients(name) {
+  const clients = wsClients.get(name);
+  if (!clients) return;
+  for (const ws of clients) {
+    try { ws.close(1000, 'PTY exited'); } catch {}
+  }
+}
+
 function resolveTemplate(str) {
   if (!str) return str;
   return str.replace(/\{(\w+)\}/g, (match, key) => {
@@ -230,6 +238,7 @@ function startProcess(name) {
     status: 'running',
     logs: [{ ts: Date.now(), source: 'system', text: `Spawning: ${config.command} ${resolvedArgs.join(' ')}` }],
     ptyRawBuffer: '',       // Raw PTY output for faithful xterm replay
+    logRawBuffer: '',       // Raw non-PTY output for faithful xterm replay
     startedAt: Date.now(),
     config,
   };
@@ -266,6 +275,8 @@ function startProcess(name) {
         }
         appendLog(entry, 'system', `Exited with code ${exitCode}`);
         entry.proc = null;
+        entry.ptyProc = null;
+        disconnectPtyClients(name);
       });
     } else {
       console.log(`[xpm] Spawning: ${config.command} ${JSON.stringify(resolvedArgs)} cwd=${resolvedCwd || '(none)'}`);
@@ -275,8 +286,17 @@ function startProcess(name) {
         env
       });
 
-      proc.stdout.on('data', (data) => appendLog(entry, 'stdout', data));
-      proc.stderr.on('data', (data) => appendLog(entry, 'stderr', data));
+      const handleData = (data) => {
+        appendLog(entry, 'stdout', data);
+        broadcastPtyData(name, data);
+        entry.logRawBuffer += data;
+        if (entry.logRawBuffer.length > 256 * 1024) {
+          entry.logRawBuffer = entry.logRawBuffer.slice(-128 * 1024);
+        }
+      };
+
+      proc.stdout.on('data', handleData);
+      proc.stderr.on('data', handleData);
 
       proc.on('error', (err) => {
         entry.status = 'errored';
@@ -291,6 +311,7 @@ function startProcess(name) {
         }
         appendLog(entry, 'system', `Exited with code ${code}`);
         entry.proc = null;
+        disconnectPtyClients(name);
       });
     }
   } catch (err) {
@@ -435,6 +456,202 @@ app.post('/api/processes/:name/restart', async (req, res) => {
     await wait();
   }
   res.json(startProcess(name));
+});
+
+app.get('/api/processes/:name/files', (req, res) => {
+  const name = req.params.name;
+  const config = processConfigs.find(c => c.name === name);
+  if (!config || !config.cwd) return res.status(404).json({ error: 'Process or CWD not found' });
+
+  const resolvedCwd = resolveTemplate(config.cwd);
+  const subPath = req.query.path || '';
+  const targetDir = subPath ? path.resolve(resolvedCwd, subPath) : resolvedCwd;
+
+  // Prevent directory traversal outside the workspace
+  if (!targetDir.startsWith(resolvedCwd)) {
+    return res.status(403).json({ error: 'Access denied' });
+  }
+
+  try {
+    const entries = fs.readdirSync(targetDir, { withFileTypes: true });
+    const files = entries
+      .filter(e => !e.name.startsWith('.'))
+      .map(e => ({
+        name: e.name,
+        isDirectory: e.isDirectory(),
+        size: e.isFile() ? (fs.statSync(path.join(targetDir, e.name)).size) : null,
+      }))
+      .sort((a, b) => {
+        if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1;
+        return a.name.localeCompare(b.name);
+      });
+    res.json({ path: subPath || '.', files });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/processes/:name/search', (req, res) => {
+  const name = req.params.name;
+  const config = processConfigs.find(c => c.name === name);
+  if (!config || !config.cwd) return res.status(404).json({ error: 'Process or CWD not found' });
+
+  const resolvedCwd = resolveTemplate(config.cwd);
+  const query = (req.query.q || '').trim();
+  if (!query) return res.json({ results: [] });
+
+  const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'build', '.next', '.nuxt', '__pycache__', '.venv', 'vendor', 'coverage']);
+  const MAX_RESULTS = 80;
+  const MAX_FILE_SIZE = 512 * 1024; // skip files >512KB for content search
+  const results = [];
+  const queryLower = query.toLowerCase();
+
+  function walk(dir, rel) {
+    if (results.length >= MAX_RESULTS) return;
+    let entries;
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const entry of entries) {
+      if (results.length >= MAX_RESULTS) return;
+      if (entry.name.startsWith('.')) continue;
+      const fullPath = path.join(dir, entry.name);
+      const relPath = rel ? rel + '/' + entry.name : entry.name;
+
+      if (entry.isDirectory()) {
+        if (!SKIP_DIRS.has(entry.name)) walk(fullPath, relPath);
+        continue;
+      }
+
+      // File name match
+      if (entry.name.toLowerCase().includes(queryLower)) {
+        results.push({ path: relPath, type: 'file' });
+        continue;
+      }
+
+      // Content match — only text files under size limit
+      try {
+        const stat = fs.statSync(fullPath);
+        if (stat.size > MAX_FILE_SIZE) continue;
+        const content = fs.readFileSync(fullPath, 'utf-8');
+        const lines = content.split('\n');
+        for (let i = 0; i < lines.length; i++) {
+          if (lines[i].toLowerCase().includes(queryLower)) {
+            results.push({
+              path: relPath,
+              type: 'content',
+              line: i + 1,
+              text: lines[i].trim().substring(0, 200),
+            });
+            break; // one match per file
+          }
+        }
+      } catch { /* binary or unreadable — skip */ }
+    }
+  }
+
+  walk(resolvedCwd, '');
+  res.json({ results });
+});
+
+app.get('/api/processes/:name/file', (req, res) => {
+  const name = req.params.name;
+  const config = processConfigs.find(c => c.name === name);
+  if (!config || !config.cwd) return res.status(404).json({ error: 'Process or CWD not found' });
+
+  const resolvedCwd = resolveTemplate(config.cwd);
+  const filePath = req.query.path;
+  if (!filePath) return res.status(400).json({ error: 'path is required' });
+
+  const fullPath = path.resolve(resolvedCwd, filePath);
+  if (!fullPath.startsWith(resolvedCwd)) {
+    return res.status(403).json({ error: 'Access denied' });
+  }
+
+  try {
+    const stat = fs.statSync(fullPath);
+    if (stat.size > 2 * 1024 * 1024) {
+      return res.status(413).json({ error: 'File too large (>2MB)' });
+    }
+    const content = fs.readFileSync(fullPath, 'utf-8');
+    res.json({ content });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/processes/:name/file', (req, res) => {
+  const name = req.params.name;
+  const config = processConfigs.find(c => c.name === name);
+  if (!config || !config.cwd) return res.status(404).json({ error: 'Process or CWD not found' });
+
+  const resolvedCwd = resolveTemplate(config.cwd);
+  const filePath = req.body.path;
+  const content = req.body.content;
+  if (!filePath || content == null) return res.status(400).json({ error: 'path and content are required' });
+
+  const fullPath = path.resolve(resolvedCwd, filePath);
+  if (!fullPath.startsWith(resolvedCwd)) {
+    return res.status(403).json({ error: 'Access denied' });
+  }
+
+  try {
+    fs.writeFileSync(fullPath, content, 'utf-8');
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/processes/:name/ai-command', (req, res) => {
+  const name = req.params.name;
+  const config = processConfigs.find(c => c.name === name);
+  if (!config || !config.cwd) return res.status(404).json({ error: 'Process or CWD not found' });
+
+  const resolvedCwd = resolveTemplate(config.cwd);
+  const { prompt, files, tool } = req.body;
+  if (!files || !Array.isArray(files)) {
+    return res.status(400).json({ error: 'files array is required' });
+  }
+
+  let combinedContext = prompt ? `Prompt:\n${prompt}\n\nContext files:\n\n` : "Context files:\n\n";
+
+  for (const file of files) {
+    const fullPath = path.resolve(resolvedCwd, file);
+    if (!fullPath.startsWith(resolvedCwd)) {
+      return res.status(403).json({ error: `Access denied for file ${file}` });
+    }
+    try {
+      const content = fs.readFileSync(fullPath, 'utf-8');
+      combinedContext += `--- FILE: ${file} ---\n${content}\n\n`;
+    } catch (err) {
+      combinedContext += `--- FILE: ${file} ---\n(Failed to read: ${err.message})\n\n`;
+    }
+  }
+
+  const executable = tool === 'claude' ? 'claude' : 'gemini'; 
+  
+  const proc = spawn(executable, [], {
+    cwd: resolvedCwd,
+    env: process.env
+  });
+
+  res.setHeader('Content-Type', 'text/plain');
+  res.setHeader('Transfer-Encoding', 'chunked');
+
+  proc.stdout.on('data', (data) => res.write(data));
+  proc.stderr.on('data', (data) => res.write(`[STDERR] ${data}`));
+  
+  proc.on('close', (code) => {
+    res.end();
+  });
+  
+  proc.on('error', (err) => {
+    res.write(`\n[Error starting CLI: ${err.message}]\nEnsure '${executable}' is installed and in your PATH.`);
+    res.end();
+  });
+
+  // Pass the generated context to the CLI via stdin
+  proc.stdin.write(combinedContext);
+  proc.stdin.end();
 });
 
 app.get('/api/processes/:name/git/branches', async (req, res) => {
@@ -816,7 +1033,10 @@ async function bootstrap() {
     if (!name) { ws.close(1008, 'Missing name param'); return; }
 
     const entry = processes.get(name);
-    if (!entry || !entry.ptyProc) { ws.close(1008, 'Not a PTY process'); return; }
+    if (!entry || (entry.status !== 'running' && !entry.logs.length)) { 
+      ws.close(1008, 'Process not found or not running'); 
+      return; 
+    }
 
     // Register client
     if (!wsClients.has(name)) wsClients.set(name, new Set());
@@ -824,28 +1044,39 @@ async function bootstrap() {
 
     ws.on('error', () => {});  // Prevent unhandled error crashes
 
-    // Replay raw PTY output so late-connecting terminals render TUIs faithfully
-    if (entry.ptyRawBuffer && ws.readyState === 1) {
+    // Replay raw output (PTY or non-PTY) so late-connecting terminals render faithfully
+    const buffer = entry.config.usePty ? entry.ptyRawBuffer : entry.logRawBuffer;
+    if (buffer && ws.readyState === 1) {
       try {
-        ws.send(entry.ptyRawBuffer);
+        ws.send(buffer);
       } catch {}
     }
 
-    // Client → PTY (keyboard input + resize)
+    // Client → Process (keyboard input + resize)
     ws.on('message', (msg) => {
-      if (!entry.ptyProc) return;
       try {
         const parsed = JSON.parse(msg);
         if (parsed.type === 'resize') {
-          entry.ptyProc.resize(
-            Math.min(parsed.cols, 300),
-            Math.min(parsed.rows, 100)
-          );
+          if (entry.ptyProc) {
+            entry.ptyProc.resize(
+              Math.min(parsed.cols, 300),
+              Math.min(parsed.rows, 100)
+            );
+          }
         } else if (parsed.type === 'input') {
-          entry.ptyProc.write(parsed.data);
+          if (entry.ptyProc) {
+            entry.ptyProc.write(parsed.data);
+          } else if (entry.proc && entry.proc.stdin && !entry.proc.stdin.destroyed) {
+            entry.proc.stdin.write(parsed.data);
+          }
         }
       } catch {
-        entry.ptyProc.write(msg.toString());
+        const data = msg.toString();
+        if (entry.ptyProc) {
+          entry.ptyProc.write(data);
+        } else if (entry.proc && entry.proc.stdin && !entry.proc.stdin.destroyed) {
+          entry.proc.stdin.write(data);
+        }
       }
     });
 
