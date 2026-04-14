@@ -1,200 +1,275 @@
-import { ref, onUnmounted, nextTick } from 'vue'
+import { ref, reactive, onUnmounted, nextTick } from 'vue'
 import { api } from './useApi.js'
 
 export function usePopover() {
+  // ── Pinned popovers (one per expanded card) ──
+  const pinnedPopovers = reactive(new Map())
+
+  // ── Hover popover (single, transient) ──
   const popoverVisible = ref(false)
   const popoverName = ref(null)
   const popoverLogs = ref([])
   const popoverStyle = ref({ left: '0px', top: '0px' })
-  const isPinned = ref(false)
 
-  let popoverSince = 0
-  let popoverShowTimer = null
-  let popoverHideTimer = null
-  let popoverPollTimer = null
+  let hoverSince = 0
+  let hoverShowTimer = null
+  let hoverHideTimer = null
+  let hoverPollTimer = null
+  let hoverAnchorEl = null
+  let hoverPopoverEl = null
+
   let popoverPollInterval = 1500
-  let popoverAnchorEl = null
-  let popoverEl = null
 
   function setPopoverEl(el) {
-    popoverEl = el
+    hoverPopoverEl = el
   }
 
   function setPopoverPollInterval(ms) {
     popoverPollInterval = ms || 1500
   }
 
-  function positionPopover(anchorEl) {
-    if (!popoverEl) return
+  // ── Positioning ──────────────────────────────
+  function computePosition(anchorEl, popoverEl) {
     const rect = anchorEl.getBoundingClientRect()
     const margin = 8
     const cardWidth = rect.width
-    const h = popoverEl.offsetHeight || 200
+    const h = (popoverEl && popoverEl.offsetHeight) || 200
     let left = rect.left
     let top = rect.bottom + margin
 
-    // Ensure it doesn't go off-screen horizontally
     if (left + cardWidth > window.innerWidth - 12) {
       left = window.innerWidth - cardWidth - 12
     }
     if (left < 12) left = 12
-
-    // Vertical positioning
     if (top + h > window.innerHeight - 12) {
       top = rect.top - margin - h
     }
     if (top < 12) top = 12
 
-    // Extract actual border color from the card
     const borderColor = window.getComputedStyle(anchorEl).borderColor || '#2e3144'
+    return { left: left + 'px', top: top + 'px', width: cardWidth + 'px', borderColor }
+  }
 
-    popoverStyle.value = { 
-      left: left + 'px', 
-      top: top + 'px',
-      width: cardWidth + 'px',
-      borderColor
+  // ── Pinned popover management ────────────────
+  function addPinnedPopover(name, anchorEl) {
+    if (pinnedPopovers.has(name)) {
+      const entry = pinnedPopovers.get(name)
+      entry.anchorEl = anchorEl
+      entry.style = computePosition(anchorEl, null)
+      return
+    }
+
+    // Close hover popover if it's showing this node
+    if (popoverName.value === name) {
+      hideHoverPopover()
+    }
+
+    const entry = reactive({
+      logs: [],
+      style: computePosition(anchorEl, null),
+      since: 0,
+      anchorEl,
+      pollTimer: null,
+    })
+
+    pinnedPopovers.set(name, entry)
+
+    fetchPinnedLogs(name)
+    entry.pollTimer = setInterval(() => fetchPinnedLogs(name), popoverPollInterval)
+
+    nextTick(() => {
+      entry.style = computePosition(anchorEl, null)
+      nextTick(() => { entry.style = computePosition(anchorEl, null) })
+    })
+  }
+
+  function removePinnedPopover(name) {
+    const entry = pinnedPopovers.get(name)
+    if (!entry) return
+    if (entry.pollTimer) clearInterval(entry.pollTimer)
+    pinnedPopovers.delete(name)
+  }
+
+  async function fetchPinnedLogs(name) {
+    const entry = pinnedPopovers.get(name)
+    if (!entry) return
+
+    const sinceBefore = entry.since
+    const logs = await api(
+      `/api/processes/${encodeURIComponent(name)}/logs?since=${entry.since}`
+    )
+    if (!Array.isArray(logs)) return
+    if (!pinnedPopovers.has(name)) return
+
+    if (sinceBefore === 0) entry.logs = []
+
+    for (const log of logs) {
+      entry.logs.push(log)
+      entry.since = Math.max(entry.since, log.ts)
+    }
+
+    if (entry.logs.length > 200) {
+      entry.logs = entry.logs.slice(-200)
     }
   }
 
-  async function fetchPopoverLogs() {
+  function clearPinnedLogs(name) {
+    const entry = pinnedPopovers.get(name)
+    if (!entry) return
+    entry.logs = []
+    entry.since = Date.now()
+  }
+
+  // ── Hover popover ────────────────────────────
+  async function fetchHoverLogs() {
     if (!popoverName.value) return
-    const sinceBefore = popoverSince
+    const sinceBefore = hoverSince
     const logs = await api(
-      `/api/processes/${encodeURIComponent(popoverName.value)}/logs?since=${popoverSince}`
+      `/api/processes/${encodeURIComponent(popoverName.value)}/logs?since=${hoverSince}`
     )
     if (!Array.isArray(logs)) return
 
-    if (sinceBefore === 0) {
-      popoverLogs.value = []
-    }
+    if (sinceBefore === 0) popoverLogs.value = []
 
     for (const entry of logs) {
       popoverLogs.value.push(entry)
-      popoverSince = Math.max(popoverSince, entry.ts)
+      hoverSince = Math.max(hoverSince, entry.ts)
     }
 
-    // Trim to 200 lines
     if (popoverLogs.value.length > 200) {
       popoverLogs.value = popoverLogs.value.slice(-200)
     }
 
     await nextTick()
-    if (popoverEl) {
-      const body = popoverEl.querySelector('.log-popover-body')
+    if (hoverPopoverEl) {
+      const body = hoverPopoverEl.querySelector('.log-popover-body')
       if (body) body.scrollTop = body.scrollHeight
     }
   }
 
-  function openLogPopover(name, anchorEl) {
-    hideLogPopover()
+  function openHoverPopover(name, anchorEl) {
+    hideHoverPopover()
     popoverName.value = name
-    popoverSince = 0
-    popoverAnchorEl = anchorEl
+    hoverSince = 0
+    hoverAnchorEl = anchorEl
     popoverLogs.value = []
     popoverVisible.value = true
 
     nextTick(() => {
-      positionPopover(anchorEl)
-      nextTick(() => positionPopover(anchorEl))
+      if (hoverPopoverEl) popoverStyle.value = computePosition(anchorEl, hoverPopoverEl)
+      nextTick(() => {
+        if (hoverPopoverEl) popoverStyle.value = computePosition(anchorEl, hoverPopoverEl)
+      })
     })
 
-    fetchPopoverLogs()
-    popoverPollTimer = setInterval(fetchPopoverLogs, popoverPollInterval)
+    fetchHoverLogs()
+    hoverPollTimer = setInterval(fetchHoverLogs, popoverPollInterval)
   }
 
-  function hideLogPopover() {
-    isPinned.value = false
-    clearTimeout(popoverShowTimer)
-    popoverShowTimer = null
-    clearTimeout(popoverHideTimer)
-    popoverHideTimer = null
-    if (popoverPollTimer) {
-      clearInterval(popoverPollTimer)
-      popoverPollTimer = null
+  function hideHoverPopover() {
+    clearTimeout(hoverShowTimer)
+    hoverShowTimer = null
+    clearTimeout(hoverHideTimer)
+    hoverHideTimer = null
+    if (hoverPollTimer) {
+      clearInterval(hoverPollTimer)
+      hoverPollTimer = null
     }
     popoverName.value = null
-    popoverSince = 0
-    popoverAnchorEl = null
+    hoverSince = 0
+    hoverAnchorEl = null
     popoverVisible.value = false
     popoverLogs.value = []
   }
 
   function schedulePopoverHide() {
-    if (isPinned.value) return
-    clearTimeout(popoverHideTimer)
-    popoverHideTimer = setTimeout(() => {
-      popoverHideTimer = null
-      hideLogPopover()
+    clearTimeout(hoverHideTimer)
+    hoverHideTimer = setTimeout(() => {
+      hoverHideTimer = null
+      hideHoverPopover()
     }, 250)
   }
 
   function cancelPopoverHide() {
-    clearTimeout(popoverHideTimer)
-    popoverHideTimer = null
+    clearTimeout(hoverHideTimer)
+    hoverHideTimer = null
   }
 
+  function clearPopoverLogs() {
+    popoverLogs.value = []
+    hoverSince = Date.now()
+  }
+
+  // ── Card event handlers ──────────────────────
   function onCardHoverEnter(name, cardEl, immediate = false) {
-    cancelPopoverHide()
-    if (popoverVisible.value && popoverName.value === name) {
-      if (immediate) isPinned.value = true
-      return
-    }
-    clearTimeout(popoverShowTimer)
     if (immediate) {
-      popoverShowTimer = null
-      openLogPopover(name, cardEl)
-      isPinned.value = true
+      addPinnedPopover(name, cardEl)
       return
     }
-    isPinned.value = false
-    popoverShowTimer = setTimeout(() => {
-      popoverShowTimer = null
-      openLogPopover(name, cardEl)
+    // Passive hover — skip if already pinned
+    if (pinnedPopovers.has(name)) return
+    cancelPopoverHide()
+    if (popoverVisible.value && popoverName.value === name) return
+    clearTimeout(hoverShowTimer)
+    hoverShowTimer = setTimeout(() => {
+      hoverShowTimer = null
+      openHoverPopover(name, cardEl)
     }, 1000)
   }
 
   function onCardHoverLeave(name, force = false) {
-    if (name && popoverName.value !== name) {
-      return
-    }
     if (force) {
-      hideLogPopover()
+      removePinnedPopover(name)
       return
     }
-    if (isPinned.value) {
-      return
-    }
-    clearTimeout(popoverShowTimer)
-    popoverShowTimer = null
+    if (name && popoverName.value !== name) return
+    if (pinnedPopovers.has(name)) return
+    clearTimeout(hoverShowTimer)
+    hoverShowTimer = null
     schedulePopoverHide()
   }
 
   function onWindowResize() {
-    if (popoverAnchorEl && popoverVisible.value) {
-      positionPopover(popoverAnchorEl)
+    if (hoverAnchorEl && popoverVisible.value && hoverPopoverEl) {
+      popoverStyle.value = computePosition(hoverAnchorEl, hoverPopoverEl)
+    }
+    for (const [, entry] of pinnedPopovers) {
+      if (entry.anchorEl) {
+        entry.style = computePosition(entry.anchorEl, null)
+      }
     }
   }
 
-  onUnmounted(() => {
-    hideLogPopover()
-  })
-
-  function clearPopoverLogs() {
-    popoverLogs.value = []
-    popoverSince = Date.now()
+  // ── Cleanup ──────────────────────────────────
+  function hideAllPopovers() {
+    hideHoverPopover()
+    for (const [, entry] of pinnedPopovers) {
+      if (entry.pollTimer) clearInterval(entry.pollTimer)
+    }
+    pinnedPopovers.clear()
   }
 
+  onUnmounted(() => {
+    hideAllPopovers()
+  })
+
   return {
+    // Pinned
+    pinnedPopovers,
+    removePinnedPopover,
+    clearPinnedLogs,
+    // Hover
     popoverVisible,
     popoverName,
     popoverLogs,
     popoverStyle,
     setPopoverEl,
     setPopoverPollInterval,
-    hideLogPopover,
+    hideLogPopover: hideHoverPopover,
     clearPopoverLogs,
     schedulePopoverHide,
     cancelPopoverHide,
+    // Shared
     onCardHoverEnter,
     onCardHoverLeave,
     onWindowResize,

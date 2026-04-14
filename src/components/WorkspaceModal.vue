@@ -191,15 +191,25 @@
         </div>
       </div>
     </div>
+    
+    <!-- Mermaid Editor UI -->
+    <MermaidEditor
+      v-if="mermaidEditorOpen"
+      :initialCode="mermaidEditorCode"
+      @save="onMermaidSave"
+      @cancel="closeMermaidEditor"
+    />
   </div>
 </template>
 
 <script setup>
-import { ref, watch, computed, nextTick, onUnmounted, shallowRef, markRaw } from 'vue'
+import { ref, watch, computed, nextTick, onUnmounted, shallowRef, markRaw, defineAsyncComponent } from 'vue'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import { api } from '../composables/useApi.js'
+
+const MermaidEditor = defineAsyncComponent(() => import('./MermaidEditor.vue'))
 
 const props = defineProps({
   show: { type: Boolean, default: false },
@@ -419,6 +429,8 @@ const isMarkdown = computed(() => {
   return activeTab.value.path.toLowerCase().endsWith('.md')
 })
 
+let mermaidBlockIndexCounter = 0
+
 async function loadMarked() {
   if (markedModule) return markedModule
   markedModule = await import('marked')
@@ -429,7 +441,8 @@ async function loadMarked() {
   renderer.code = function ({ text, lang }) {
     if (lang === 'mermaid') {
       const id = `mermaid-${++mermaidId}`
-      return `<div class="mermaid-placeholder" data-mermaid-id="${id}">${escapeHtml(text)}</div>`
+      const index = mermaidBlockIndexCounter++
+      return `<div class="mermaid-placeholder clickable" style="cursor: pointer;" title="Click to edit diagram" data-mermaid-id="${id}" data-mermaid-index="${index}">${escapeHtml(text)}</div>`
     }
     return origCode({ text, lang })
   }
@@ -452,8 +465,66 @@ function escapeHtml(str) {
 function renderMarkdown(content) {
   if (!markedModule) return ''
   const { marked } = markedModule
+  mermaidBlockIndexCounter = 0
   return marked.parse(content)
 }
+
+const mermaidEditorOpen = ref(false)
+const mermaidEditorCode = ref('')
+const mermaidEditorIndex = ref(null)
+
+async function openMermaidEditor(index, code) {
+  mermaidEditorIndex.value = index
+  mermaidEditorCode.value = code
+  mermaidEditorOpen.value = true
+}
+
+function closeMermaidEditor() {
+  mermaidEditorOpen.value = false
+}
+
+async function onMermaidSave(newCode) {
+  if (mermaidEditorIndex.value === null || !activeTab.value?.originalContent) return
+  
+  const text = activeTab.value.originalContent
+  const lines = text.split('\n')
+  let currentMermaidIndex = -1
+  let inMermaid = false
+  let startIndex = -1
+  let endIndex = -1
+  
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim()
+    if (line.startsWith('```mermaid')) {
+      currentMermaidIndex++
+      if (currentMermaidIndex === parseInt(mermaidEditorIndex.value, 10)) {
+        inMermaid = true
+        startIndex = i
+      }
+    } else if (inMermaid && line.startsWith('```')) {
+      endIndex = i
+      break
+    }
+  }
+  
+  if (startIndex !== -1 && endIndex !== -1) {
+    const codeFixed = newCode.endsWith('\n') ? newCode : newCode + '\n'
+    const before = lines.slice(0, startIndex + 1)
+    const after = lines.slice(endIndex)
+    activeTab.value.originalContent = before.join('\n') + '\n' + codeFixed.replace(/\n$/, '') + '\n' + after.join('\n')
+    
+    if (editorInstance && activeTab.value.type === 'file' && activeTab.value.model) {
+      activeTab.value.model.setValue(activeTab.value.originalContent)
+      dirty.value = true
+    }
+    
+    renderedMarkdown.value = renderMarkdown(activeTab.value.originalContent)
+    await renderMermaidBlocks()
+  }
+  
+  closeMermaidEditor()
+}
+
 
 async function renderMermaidBlocks() {
   await nextTick()
@@ -464,11 +535,17 @@ async function renderMermaidBlocks() {
   const mermaid = await loadMermaid()
   for (const el of placeholders) {
     const id = el.getAttribute('data-mermaid-id')
+    const index = el.getAttribute('data-mermaid-index')
     const code = el.textContent
     try {
       const { svg } = await mermaid.render(id, code)
       el.innerHTML = svg
       el.classList.add('mermaid-rendered')
+      // Make it interactive
+      el.onclick = () => openMermaidEditor(index, code)
+      el.style.transition = 'transform 0.1s ease, box-shadow 0.1s ease'
+      el.onmouseenter = () => { el.style.transform = 'scale(1.02)'; el.style.boxShadow = '0 4px 12px rgba(255, 255, 255, 0.05)' }
+      el.onmouseleave = () => { el.style.transform = 'scale(1)'; el.style.boxShadow = 'none' }
     } catch {
       el.classList.add('mermaid-error')
     }
