@@ -750,7 +750,7 @@ async function saveFile() {
 
 // ── Embedded Terminal ───────────────────────
 let isResizing = false
-const terminalWidth = ref(420)
+const terminalWidth = ref(parseInt(localStorage.getItem('xpm-ws-width')) || 420)
 const wsTermContainerRef = ref(null)
 
 function startResizing(e) {
@@ -767,6 +767,7 @@ function doResizing(e) {
   const newWidth = modalRect.right - e.clientX
   if (newWidth > 200 && newWidth < modalRect.width - 200) {
     terminalWidth.value = newWidth
+    localStorage.setItem('xpm-ws-width', newWidth)
     nextTick(() => fitWsTerm())
   }
 }

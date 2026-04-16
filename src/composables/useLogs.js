@@ -6,7 +6,7 @@ export function useLogs() {
   const logs = ref([])
   const lastRefresh = ref('')
   const logAutoScroll = ref(true)
-  const logPanelHeight = ref(300)
+  const logPanelHeight = ref(parseInt(localStorage.getItem('xpm-log-height')) || 300)
 
   let logSince = 0
   let logTimer = null
@@ -65,7 +65,9 @@ export function useLogs() {
   }
 
   function applyLogPanelHeight(h) {
-    logPanelHeight.value = Math.max(120, Math.min(h, window.innerHeight - 60))
+    const height = Math.max(120, Math.min(h, window.innerHeight - 60))
+    logPanelHeight.value = height
+    localStorage.setItem('xpm-log-height', height)
   }
 
   function startLogPolling(intervalMs = 500) {
