@@ -150,8 +150,17 @@ const templateMenuOpen = ref(false)
 
 const commandTemplates = [
   {
+    label: 'Cursor',
+    description: 'Cursor CLI Agent',
+    icon: 'fa-solid fa-robot',
+    command: 'agent',
+    argsRaw: '',
+    type: 'agent',
+    usePty: true,
+  },
+  {
     label: 'Claude',
-    description: 'claude CLI agent',
+    description: 'Claude CLI Agent',
     icon: 'fa-solid fa-robot',
     command: 'claude',
     argsRaw: '',
@@ -160,7 +169,7 @@ const commandTemplates = [
   },
   {
     label: 'Gemini',
-    description: '/opt/homebrew/bin/node + gemini binary',
+    description: 'Gemini CLI Agent',
     icon: 'fa-solid fa-gem',
     command: '/opt/homebrew/bin/node',
     argsRaw: '/opt/homebrew/bin/gemini',
