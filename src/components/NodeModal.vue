@@ -160,7 +160,7 @@ const commandTemplates = [
   },
   {
     label: 'Claude',
-    description: 'Claude CLI Agent',
+    description: 'Anthropic's Claude CLI Agent',
     icon: 'fa-solid fa-robot',
     command: 'claude',
     argsRaw: '',
@@ -169,7 +169,7 @@ const commandTemplates = [
   },
   {
     label: 'Gemini',
-    description: 'Gemini CLI Agent',
+    description: 'Google's Gemini CLI Agent',
     icon: 'fa-solid fa-gem',
     command: '/opt/homebrew/bin/node',
     argsRaw: '/opt/homebrew/bin/gemini',
