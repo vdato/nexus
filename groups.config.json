@@ -1,7 +1,7 @@
 [
   {
-    "name": "deployment",
-    "color": "#5b52e0"
+    "name": "frontend",
+    "color": "#888888"
   },
   {
     "name": "infra",
@@ -12,11 +12,7 @@
     "color": "#001eff"
   },
   {
-    "name": "design",
+    "name": "backend",
     "color": "#888888"
-  },
-  {
-    "name": "analyst",
-    "color": "#eb8aff"
   }
 ]

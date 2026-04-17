@@ -256,6 +256,12 @@ function startProcess(name) {
   const resolvedArgs = (config.args || []).map(resolveTemplate);
 
   const env = { ...process.env, PYTHONUNBUFFERED: '1', ...envVars };
+  
+  if (envVars.PATH) {
+    // If the user provided a custom PATH, prepend it to the current PATH
+    // to ensure it takes precedence without losing standard system paths.
+    env.PATH = envVars.PATH + (process.env.PATH ? ':' + process.env.PATH : '');
+  }
   let proc;
   const entry = {
     status: 'running',
