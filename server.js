@@ -1,5 +1,5 @@
 const express = require('express');
-const { spawn, execFileSync } = require('child_process');
+const { spawn, execFileSync, exec } = require('child_process');
 const kill = require('tree-kill');
 const path = require('path');
 const fs = require('fs');
@@ -266,7 +266,15 @@ function triggerOnSuccess(entry, config) {
   }
 }
 
-function startProcess(name) {
+function getGeminiPath() {
+  const possible = ['/opt/homebrew/bin/gemini', '/usr/local/bin/gemini', 'gemini'];
+  for (const p of possible) {
+    if (p.startsWith('/') && fs.existsSync(p)) return p;
+  }
+  return 'gemini';
+}
+
+function startProcess(name, resumeId = null) {
   const config = processConfigs.find((c) => c.name === name);
   if (!config) return { error: `Unknown process: ${name}` };
 
@@ -276,9 +284,24 @@ function startProcess(name) {
   }
 
   const resolvedCwd = resolveTemplate(config.cwd);
-  const resolvedArgs = (config.args || []).map(resolveTemplate);
+  let resolvedArgs = (config.args || []).map(resolveTemplate);
+
+  if (resumeId) {
+    // Check if the command is gemini or node + gemini
+    const isGemini = config.command.includes('gemini') || (resolvedArgs[0] && resolvedArgs[0].includes('gemini'));
+    if (isGemini) {
+      // Find existing -r or --resume and replace, or append
+      const idx = resolvedArgs.findIndex(a => a === '-r' || a === '--resume');
+      if (idx !== -1) {
+        resolvedArgs[idx + 1] = resumeId;
+      } else {
+        resolvedArgs.push('--resume', resumeId);
+      }
+    }
+  }
 
   const env = { ...process.env, PYTHONUNBUFFERED: '1', ...envVars };
+
   
   if (envVars.PATH) {
     // If the user provided a custom PATH, prepend it to the current PATH
@@ -488,8 +511,76 @@ app.post('/api/processes/:name/stdin', (req, res) => {
   res.json({ ok: true });
 });
 
+function listGeminiSessions(cwd) {
+  return new Promise((resolve, reject) => {
+    const gemini = getGeminiPath();
+    const execOpts = { env: { ...process.env, ...envVars } };
+    if (cwd && fs.existsSync(cwd)) execOpts.cwd = cwd;
+
+    const parse = (out) => {
+      const sessions = [];
+      const regex = /^\s*(\d+)\.\s+(.+?)\s+\((.+?)\)\s+\[(.+?)\]/;
+      for (const line of out.split('\n')) {
+        const m = line.match(regex);
+        if (m) sessions.push({ index: parseInt(m[1]), title: m[2], time: m[3], id: m[4] });
+      }
+      return sessions;
+    };
+
+    exec(`node ${gemini} --list-sessions`, execOpts, (error, stdout, stderr) => {
+      if (error && stdout.includes('SyntaxError')) {
+        const brewNode = '/opt/homebrew/bin/node';
+        const brewGemini = '/opt/homebrew/bin/gemini';
+        if (fs.existsSync(brewNode) && fs.existsSync(brewGemini)) {
+          return exec(`${brewNode} ${brewGemini} --list-sessions`, execOpts, (err2, out2, serr2) => {
+            if (err2 && !out2) return reject({ error: err2.message, stderr: serr2 });
+            resolve(parse(out2));
+          });
+        }
+      }
+      if (error && !stdout) return reject({ error: error.message, stderr });
+      resolve(parse(stdout));
+    });
+  });
+}
+
+app.get('/api/gemini/sessions', (req, res) => {
+  listGeminiSessions()
+    .then((sessions) => res.json(sessions))
+    .catch((err) => res.status(500).json(err));
+});
+
+app.get('/api/processes/:name/sessions', (req, res) => {
+  const config = processConfigs.find((c) => c.name === req.params.name);
+  if (!config) return res.status(404).json({ error: `Unknown process: ${req.params.name}` });
+  listGeminiSessions(resolveTemplate(config.cwd))
+    .then((sessions) => res.json(sessions))
+    .catch((err) => res.status(500).json(err));
+});
+
 app.post('/api/processes/:name/start', (req, res) => {
   res.json(startProcess(req.params.name));
+});
+
+app.post('/api/processes/:name/resume/:id', async (req, res) => {
+  const { name, id } = req.params;
+  const config = processConfigs.find((c) => c.name === name);
+  if (!config) return res.status(404).json({ error: `Unknown process: ${name}` });
+
+  try {
+    const sessions = await listGeminiSessions(resolveTemplate(config.cwd));
+    const found = sessions.some((s) => s.id === id || String(s.index) === String(id));
+    if (!found) {
+      return res.status(404).json({
+        error: `Session "${id}" is no longer available. The session list may be stale — refresh and try again.`,
+        staleSession: true,
+      });
+    }
+  } catch (err) {
+    return res.status(500).json({ error: `Failed to verify session: ${err.error || err.message}` });
+  }
+
+  res.json(startProcess(name, id));
 });
 
 app.post('/api/processes/:name/stop', (req, res) => {

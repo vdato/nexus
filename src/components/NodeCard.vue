@@ -5,7 +5,7 @@
     :class="{ selected: isSelected, expanded }"
     :style="{ borderColor, '--card-color': borderColor }"
     @click="$emit('select', node.name)"
-    @mouseenter="$emit('hover-enter', node.name, $event.currentTarget, expanded)"
+    @mouseenter="$emit('hover-enter', node.name, $event.currentTarget, expanded, node.command)"
     @mouseleave="!expanded && $emit('hover-leave', node.name)"
   >
     <div class="card-header">
@@ -14,13 +14,36 @@
         {{ node.name }}
         <i v-if="node.needsInput" class="fa-solid fa-keyboard fa-fade" style="margin-left: 8px; color: #fbbf24;" title="Waiting for input..."></i>
       </div>
-      <div class="card-actions">
+      <div
+        class="card-actions"
+        @mouseenter="$emit('hover-cancel', node.name)"
+        @mouseleave="$emit('hover-enter', node.name, cardRef, expanded, node.command)"
+      >
         <template v-if="node.status === 'running'">
           <button class="btn-stop btn-icon" @click.stop="$emit('stop', node.name)" title="Stop"><i class="fa-solid fa-stop"></i></button>
           <button class="btn-restart btn-icon" @click.stop="$emit('restart', node.name)" title="Restart"><i class="fa-solid fa-rotate-right"></i></button>
         </template>
         <template v-else>
           <button class="btn-start btn-icon" @click.stop="$emit('start', node.name)" title="Start"><i class="fa-solid fa-play"></i></button>
+          <div v-if="node.type === 'agent' && isGemini" class="session-dropdown-container">
+            <button class="btn-sessions btn-icon" @click.stop="toggleSessions" title="Resume Session">
+              <i class="fa-solid fa-history"></i>
+            </button>
+            <div v-if="showSessions" class="session-dropdown" @click.stop>
+              <div class="session-dropdown-header">
+                Recent Sessions
+                <button class="btn-close-sessions" @click="showSessions = false">&times;</button>
+              </div>
+              <div v-if="loadingSessions" class="session-loading">Loading...</div>
+              <div v-else-if="sessions.length === 0" class="session-empty">No sessions found.</div>
+              <div v-else class="session-list">
+                <div v-for="s in sessions" :key="s.id" class="session-item" @click="resumeSession(s.id)">
+                  <div class="session-title">{{ s.title }}</div>
+                  <div class="session-time">{{ s.time }}</div>
+                </div>
+              </div>
+            </div>
+          </div>
         </template>
         <button v-if="node.cwd" class="btn-icon btn-workspace" @click.stop="$emit('open-workspace', node)" title="Open Workspace">
           <i class="fa-solid fa-folder-open"></i>
@@ -85,13 +108,54 @@ const props = defineProps({
   isSelected: { type: Boolean, default: false },
 })
 
-const emit = defineEmits(['select', 'start', 'stop', 'restart', 'edit', 'hover-enter', 'hover-leave', 'branch-click', 'open-workspace', 'pull-git'])
+const emit = defineEmits(['select', 'start', 'stop', 'restart', 'edit', 'hover-enter', 'hover-leave', 'hover-cancel', 'branch-click', 'open-workspace', 'pull-git'])
 
 const { showAlert } = useAlert()
 
 const cardRef = ref(null)
 const expanded = ref(false)
 const gitRemoteStatus = ref(null)
+
+const showSessions = ref(false)
+const loadingSessions = ref(false)
+const sessions = ref([])
+
+async function toggleSessions() {
+  showSessions.value = !showSessions.value
+  if (showSessions.value) {
+    loadingSessions.value = true
+    try {
+      sessions.value = await api(`/api/processes/${encodeURIComponent(props.node.name)}/sessions`)
+    } catch (err) {
+      console.error('Failed to fetch sessions:', err)
+      showAlert('Error', 'Failed to fetch sessions.')
+    } finally {
+      loadingSessions.value = false
+    }
+  }
+}
+
+async function resumeSession(sessionId) {
+  try {
+    const result = await api(`/api/processes/${encodeURIComponent(props.node.name)}/resume/${sessionId}`, 'POST')
+    if (result && result.staleSession) {
+      try {
+        sessions.value = await api(`/api/processes/${encodeURIComponent(props.node.name)}/sessions`)
+      } catch {}
+      showAlert('Session unavailable', result.error)
+      return
+    }
+    if (result && result.error) {
+      showAlert('Error', `Failed to resume session: ${result.error}`)
+      return
+    }
+    showSessions.value = false
+    emit('start', props.node.name)
+  } catch (err) {
+    console.error('Failed to resume session:', err)
+    showAlert('Error', `Failed to resume session: ${err.message}`)
+  }
+}
 
 function formatUptime(ms) {
   if (!ms) return '-'
@@ -111,6 +175,11 @@ const TYPE_ICONS = {
 }
 
 const typeIcon = computed(() => TYPE_ICONS[props.node.type] || 'fa-solid fa-circle')
+
+const isGemini = computed(() => {
+  const cmd = String(props.node.command || '').toLowerCase()
+  return cmd.includes('gemini')
+})
 
 const uptime = computed(() => {
   if (props.node.status === 'running' && props.node.startedAt) {

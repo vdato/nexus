@@ -39,6 +39,7 @@
       @edit="openEditModal"
       @hover-enter="popoverStore.onCardHoverEnter"
       @hover-leave="popoverStore.onCardHoverLeave"
+      @hover-cancel="popoverStore.onCardHoverCancel"
       @reorder="handleReorder"
       @reorder-groups="handleReorderGroups"
       @move-to-group="handleMoveToGroup"

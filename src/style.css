@@ -1929,8 +1929,97 @@ button:active {
 .log-line span {
   display: inline;
 }
-.xterm-container.drag-over {
-  background: rgba(96, 165, 250, 0.1);
-  outline: 2px dashed var(--blue);
-  outline-offset: -4px;
+/* ── Sessions Dropdown ────────────────────── */
+.session-dropdown-container {
+  position: relative;
+  display: inline-block;
+}
+
+.session-dropdown {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 8px;
+  width: 280px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  z-index: 100;
+  overflow: hidden;
+  animation: fadeInDown 0.15s ease-out;
+}
+
+.session-dropdown-header {
+  padding: 10px 12px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.btn-close-sessions {
+  background: transparent;
+  padding: 2px 6px;
+  font-size: 16px;
+  color: var(--text-dim);
+}
+
+.session-list {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.session-item {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.session-item:last-child {
+  border-bottom: none;
+}
+
+.session-item:hover {
+  background: var(--border);
+}
+
+.session-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  margin-bottom: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.session-time {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.session-loading, .session-empty {
+  padding: 20px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-dim);
+  font-style: italic;
+}
+
+.btn-sessions {
+  background: transparent;
+  color: var(--purple);
+  border: 1px solid var(--card-color, var(--purple));
+}
+
+.btn-sessions:hover {
+  background: var(--purple);
+  color: #1a1d27;
 }

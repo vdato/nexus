@@ -44,6 +44,7 @@
           @edit="$emit('edit', $event)"
           @hover-enter="(...args) => $emit('hover-enter', ...args)"
           @hover-leave="(...args) => $emit('hover-leave', ...args)"
+          @hover-cancel="(...args) => $emit('hover-cancel', ...args)"
           @branch-click="$emit('branch-click', $event)"
           @open-workspace="$emit('open-workspace', $event)"
           @pull-git="(...args) => $emit('pull-git', ...args)"
@@ -64,7 +65,7 @@ const props = defineProps({
   viewMode: { type: String, default: 'group' },
 })
 
-const emit = defineEmits(['select', 'start', 'stop', 'restart', 'edit', 'hover-enter', 'hover-leave', 'reorder', 'reorder-groups', 'move-to-group', 'branch-click', 'open-workspace', 'pull-git'])
+const emit = defineEmits(['select', 'start', 'stop', 'restart', 'edit', 'hover-enter', 'hover-leave', 'hover-cancel', 'reorder', 'reorder-groups', 'move-to-group', 'branch-click', 'open-workspace', 'pull-git'])
 
 // ── Card Drag and Drop ─────────────────────
 const dragName = ref(null)

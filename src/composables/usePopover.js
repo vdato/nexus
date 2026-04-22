@@ -201,7 +201,7 @@ export function usePopover() {
   }
 
   // ── Card event handlers ──────────────────────
-  function onCardHoverEnter(name, cardEl, immediate = false) {
+  function onCardHoverEnter(name, cardEl, immediate = false, command = '') {
     if (immediate) {
       addPinnedPopover(name, cardEl)
       return
@@ -214,11 +214,17 @@ export function usePopover() {
       cancelPopoverHide()
       return
     }
+    const delay = 2000;
     clearTimeout(hoverShowTimer)
     hoverShowTimer = setTimeout(() => {
       hoverShowTimer = null
       openHoverPopover(name, cardEl)
-    }, 1000)
+    }, delay)
+  }
+
+  function onCardHoverCancel() {
+    clearTimeout(hoverShowTimer)
+    hoverShowTimer = null
   }
 
   function onCardHoverLeave(name, force = false) {
@@ -277,6 +283,7 @@ export function usePopover() {
     // Shared
     onCardHoverEnter,
     onCardHoverLeave,
+    onCardHoverCancel,
     onWindowResize,
   }
 }
