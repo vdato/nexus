@@ -198,6 +198,43 @@ function createTerminal() {
   term.loadAddon(fitAddon)
   term.loadAddon(new WebLinksAddon())
 
+  // Custom link provider for file paths
+  term.registerLinkProvider({
+    provideLinks(bufferLineNumber, callback) {
+      const line = term.buffer.active.getLine(bufferLineNumber - 1).translateToString(true)
+      // Detect common file path patterns like:
+      // ./src/App.vue, src/main.js:10, /abs/path/file.py:20:5, node_modules/@vue/sfc.js
+      // This regex looks for things that look like paths and potentially have a line number.
+      // We exclude leading/trailing spaces and handle optional line/column numbers.
+      const pathRegex = /(?:\.?\.\/|\/|[a-zA-Z]:\\|[a-zA-Z0-9._\-\@]+\/)[a-zA-Z0-9\._\-\/\@\\]+\.[a-zA-Z0-9]+(?::\d+)?(?::\d+)?/g
+      let match
+      const links = []
+      while ((match = pathRegex.exec(line)) !== null) {
+        const fullMatch = match[0]
+        const startIndex = match.index
+        
+        // Basic parsing: split by colon
+        const parts = fullMatch.split(':')
+        const filePath = parts[0]
+        const lineNumber = parts.length > 1 ? parseInt(parts[1]) : null
+        
+        links.push({
+          range: {
+            start: { x: startIndex + 1, y: bufferLineNumber },
+            end: { x: startIndex + fullMatch.length, y: bufferLineNumber }
+          },
+          text: fullMatch,
+          activate: () => {
+            if (nodeGuid.value) {
+              emit('open-workspace', nodeGuid.value, filePath, lineNumber)
+            }
+          }
+        })
+      }
+      callback(links)
+    }
+  })
+
   // ALWAYS open before anything else
   term.open(termContainerRef.value)
   setupResizeObserver()

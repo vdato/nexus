@@ -128,15 +128,15 @@
 
   <WorkspaceModal
     :show="workspaceModalStore.show"
-    :node-guid="workspaceModalStore.nodeGuid"
     :node-name="workspaceModalStore.nodeName"
     :node-status="workspaceModalStatus"
     :is-agent="workspaceModalIsAgent"
     :log-panel-height="logStore.logPanelHeight.value"
+    :initial-file="workspaceModalStore.initialFile"
+    :initial-line="workspaceModalStore.initialLine"
     @close="closeWorkspaceModal"
     @start-node="handleStart"
   />
-
   <AlertModal />
   <NotificationContainer />
   <TaskOverlay />
@@ -557,6 +557,8 @@ const workspaceModalStore = reactive({
   show: false,
   nodeGuid: null,
   nodeName: null,
+  initialFile: null,
+  initialLine: null,
 })
 
 const workspaceModalStatus = computed(() => {
@@ -571,18 +573,24 @@ const workspaceModalIsAgent = computed(() => {
   return node?.type === 'agent'
 })
 
-function openWorkspaceModal(nodeOrGuid) {
+function openWorkspaceModal(nodeOrGuid, initialFile = null, initialLine = null) {
   const guid = typeof nodeOrGuid === 'object' ? nodeOrGuid.guid : nodeOrGuid
   const name = typeof nodeOrGuid === 'object' ? nodeOrGuid.name : (nodeStore.nodes.value.find(n => n.guid === guid)?.name || guid)
 
-  if (workspaceModalStore.show && workspaceModalStore.nodeGuid === guid) {
+  // If we are just toggling the same node without a specific file
+  if (workspaceModalStore.show && workspaceModalStore.nodeGuid === guid && !initialFile) {
     workspaceModalStore.show = false
     workspaceModalStore.nodeGuid = null
     workspaceModalStore.nodeName = null
+    workspaceModalStore.initialFile = null
+    workspaceModalStore.initialLine = null
     return
   }
+  
   workspaceModalStore.nodeGuid = guid
   workspaceModalStore.nodeName = name
+  workspaceModalStore.initialFile = initialFile
+  workspaceModalStore.initialLine = initialLine
   workspaceModalStore.show = true
   
   const node = typeof nodeOrGuid === 'object' ? nodeOrGuid : nodeStore.nodes.value.find(n => n.guid === guid)
@@ -598,6 +606,8 @@ function closeWorkspaceModal() {
   workspaceModalStore.show = false
   workspaceModalStore.nodeGuid = null
   workspaceModalStore.nodeName = null
+  workspaceModalStore.initialFile = null
+  workspaceModalStore.initialLine = null
 }
 
 // ── Logs ────────────────────────────────────

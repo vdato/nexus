@@ -207,6 +207,8 @@ const props = defineProps({
   nodeStatus: { type: String, default: null },
   isAgent: { type: Boolean, default: false },
   logPanelHeight: { type: Number, default: 0 },
+  initialFile: { type: String, default: null },
+  initialLine: { type: Number, default: null },
 })
 
 const emit = defineEmits(['close', 'start-node'])
@@ -778,7 +780,9 @@ watch(() => props.show, (val) => {
     clearSearch()
     fetchFiles('')
 
-
+    if (props.initialFile) {
+      openFileView(props.initialFile, props.initialLine)
+    }
   } else if (!val) {
     disposeEditor()
 
@@ -787,6 +791,12 @@ watch(() => props.show, (val) => {
     selectedFiles.value = []
     markdownEditMode.value = false
     renderedMarkdown.value = ''
+  }
+})
+
+watch([() => props.initialFile, () => props.initialLine], ([newFile, newLine]) => {
+  if (newFile && props.show) {
+    openFileView(newFile, newLine)
   }
 })
 
