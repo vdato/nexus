@@ -225,12 +225,20 @@ button:active {
   margin: 0 -12px 24px -12px;
   padding: 4px 12px 12px 12px;
   border-radius: 12px;
-  transition: background 0.2s;
+  transition: background 0.2s, box-shadow 0.2s, border-color 0.2s;
+  border: 1px solid transparent;
 }
 
 .group-section.group-hovered {
-  background: rgba(255, 255, 255, 0.025);
-  box-shadow: inset 3px 0 0 0 var(--group-color);
+  background: color-mix(in srgb, var(--group-color), transparent 98%);
+  border-color: color-mix(in srgb, var(--group-color), transparent 85%);
+  box-shadow: inset 3px 0 0 0 color-mix(in srgb, var(--group-color), transparent 60%);
+}
+
+.group-section.group-selected {
+  background: color-mix(in srgb, var(--group-color), transparent 96%);
+  border-color: color-mix(in srgb, var(--group-color), transparent 70%);
+  box-shadow: inset 4px 0 0 0 var(--group-color), 0 0 20px color-mix(in srgb, var(--group-color), transparent 90%);
 }
 
 .group-title {

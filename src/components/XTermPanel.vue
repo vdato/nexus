@@ -77,6 +77,7 @@ const props = defineProps({
 const { addNotification, removeNotification } = useNotifications()
 
 const nodeName = computed(() => props.node?.name)
+const nodeGuid = computed(() => props.node?.guid)
 const emit = defineEmits(['close', 'resize', 'start', 'stop', 'restart', 'open-workspace', 'edit'])
 
 const TYPE_ICONS = {
@@ -247,12 +248,12 @@ function destroyTerminal() {
 
 let wsRetryTimer = null
 
-function connectWs(name) {
+function connectWs(id) {
   disconnectWs()
-  if (!name) return
+  if (!id) return
 
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
-  const url = `${proto}//${location.host}/ws/terminal?name=${encodeURIComponent(name)}`
+  const url = `${proto}//${location.host}/ws/terminal?id=${encodeURIComponent(id)}`
   const localWs = new WebSocket(url)
   ws = localWs
 
@@ -273,8 +274,8 @@ function connectWs(name) {
   localWs.onclose = () => {
     if (ws !== localWs) return
     ws = null
-    if (nodeName.value === name) {
-      wsRetryTimer = setTimeout(() => connectWs(name), 1500)
+    if (nodeGuid.value === id) {
+      wsRetryTimer = setTimeout(() => connectWs(id), 1500)
     }
   }
   localWs.onerror = () => {}
@@ -288,20 +289,20 @@ function disconnectWs() {
 // When node status changes to running, attempt to reconnect immediately.
 // If the PTY isn't ready yet, the onclose retry loop will keep trying every 1500ms.
 watch(() => props.node?.status, (status, oldStatus) => {
-  if (status === 'running' && oldStatus !== 'running' && nodeName.value) {
-    connectWs(nodeName.value)
+  if (status === 'running' && oldStatus !== 'running' && nodeGuid.value) {
+    connectWs(nodeGuid.value)
   }
 })
 
-// When nodeName changes, reconnect
-watch(nodeName, async (name, oldName) => {
-  if (name && name !== oldName) {
+// When nodeGuid changes, reconnect
+watch(nodeGuid, async (guid, oldGuid) => {
+  if (guid && guid !== oldGuid) {
     if (!term) createTerminal()
     else { term.clear(); fitWide() }
-    connectWs(name)
+    connectWs(guid)
     await nextTick()
     applyInitialFocus()
-  } else if (!name) {
+  } else if (!guid) {
     disconnectWs()
   }
 }, { immediate: false })
@@ -327,9 +328,9 @@ watch(() => props.panelHeight, () => {
 })
 
 onMounted(() => {
-  if (nodeName.value) {
+  if (nodeGuid.value) {
     createTerminal()
-    connectWs(nodeName.value)
+    connectWs(nodeGuid.value)
     nextTick(() => {
       fitWide()
     })
@@ -403,8 +404,8 @@ async function onDrop(ev) {
       console.log('[xpm] No files found in drop')
       return
     }
-    if (!nodeName.value) {
-      console.log('[xpm] No active node name for upload')
+    if (!nodeGuid.value) {
+      console.log('[xpm] No active node guid for upload')
       return
     }
 
@@ -412,7 +413,7 @@ async function onDrop(ev) {
       console.log(`[xpm] Processing dropped file: ${file.name}`)
       try {
         // Resolve path on server instead of uploading
-        const result = await api(`/api/processes/${encodeURIComponent(nodeName.value)}/file-path`, 'POST', {
+        const result = await api(`/api/processes/${encodeURIComponent(nodeGuid.value)}/file-path`, 'POST', {
           path: file.name
         })
         console.log('[xpm] Path resolution response:', result)

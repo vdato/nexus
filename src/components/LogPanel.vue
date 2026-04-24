@@ -12,7 +12,7 @@
     <div class="log-header">
       <div class="card-name" style="border: none; background: transparent; padding: 0;">
         <i :class="[typeIcon, 'node-type-icon', node?.status]" :title="node?.type" style="margin-right: 8px;"></i>
-        <span>Logs — {{ selectedNode }}</span>
+        <span>Logs — {{ node?.name }}</span>
       </div>
       <span style="font-size: 11px; color: var(--text-dim); margin-left: auto; margin-right: 12px">
         {{ lastRefresh }}

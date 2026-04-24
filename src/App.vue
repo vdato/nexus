@@ -32,7 +32,7 @@
       :color-map="colorMap"
       :view-mode="viewMode"
       :selected-node="logStore.selectedNode.value"
-      :workspace-node="workspaceModalStore.nodeName"
+      :workspace-node="workspaceModalStore.nodeGuid"
       @select="handleSelectLog"
       @start="handleStart"
       @stop="handleStop"
@@ -71,7 +71,7 @@
     :node="selectedNodeObject"
     :panel-height="logStore.logPanelHeight.value"
     :terminal-width="settingsStore.sysTerminalWidth.value"
-    :workspace-open="workspaceModalStore.nodeName === logStore.selectedNode.value"
+    :workspace-open="workspaceModalStore.nodeGuid === logStore.selectedNode.value"
     @close="handleCloseLog"
     @resize="logStore.applyLogPanelHeight"
     @start="handleStart"
@@ -89,7 +89,7 @@
     :logs="logStore.logs.value"
     :last-refresh="logStore.lastRefresh.value"
     :panel-height="logStore.logPanelHeight.value"
-    :workspace-open="workspaceModalStore.nodeName === logStore.selectedNode.value"
+    :workspace-open="workspaceModalStore.nodeGuid === logStore.selectedNode.value"
     @close="handleCloseLog"
     @resize="logStore.applyLogPanelHeight"
     @clear="logStore.clearLogs"
@@ -103,7 +103,7 @@
 
   <NodeModal
     :show="showNodeModal"
-    :editing-name="editingNodeName"
+    :editing-guid="editingNodeGuid"
     :group-names="groupNames"
     :color-map="colorMap"
     :nodes="nodeStore.nodes.value"
@@ -116,6 +116,7 @@
 
   <BranchModal
     :show="branchModalStore.show"
+    :node-guid="branchModalStore.nodeGuid"
     :node-name="branchModalStore.nodeName"
     :branches="branchModalStore.branches"
     :current-branch="branchModalStore.currentBranch"
@@ -127,6 +128,7 @@
 
   <WorkspaceModal
     :show="workspaceModalStore.show"
+    :node-guid="workspaceModalStore.nodeGuid"
     :node-name="workspaceModalStore.nodeName"
     :node-status="workspaceModalStatus"
     :is-agent="workspaceModalIsAgent"
@@ -202,9 +204,9 @@ const { addNotification } = useNotifications()
 
 // ── Computed ────────────────────────────────
 const selectedIsPty = computed(() => {
-  const name = logStore.selectedNode.value
-  if (!name) return false
-  const nd = nodeStore.nodes.value.find(p => p.name === name)
+  const guid = logStore.selectedNode.value
+  if (!guid) return false
+  const nd = nodeStore.nodes.value.find(p => p.guid === guid)
   return nd?.usePty || false
 })
 
@@ -236,8 +238,8 @@ function sortNodes(items) {
   }
   // default — use custom order if available
   if (customOrder.value.length) {
-    const orderMap = new Map(customOrder.value.map((n, i) => [n, i]))
-    return [...items].sort((a, b) => (orderMap.get(a.name) ?? 999) - (orderMap.get(b.name) ?? 999))
+    const orderMap = new Map(customOrder.value.map((guid, i) => [guid, i]))
+    return [...items].sort((a, b) => (orderMap.get(a.guid) ?? 999) - (orderMap.get(b.guid) ?? 999))
   }
   return items
 }
@@ -245,23 +247,46 @@ function sortNodes(items) {
 const displayGroups = computed(() => {
   if (viewMode.value === 'none') {
     // Flat list — all nodes in one unnamed group
-    const all = sortedGroups.value.flatMap(([, items]) => items)
-    return [['', sortNodes(all)]]
+    const all = sortedGroups.value.flatMap((g) => g.items)
+    return [{
+      name: '',
+      guid: '',
+      items: sortNodes(all)
+    }]
   }
   // Grouped — sort within each group
-  return sortedGroups.value.map(([group, items]) => [group, sortNodes(items)])
+  return sortedGroups.value.map((g) => ({
+    ...g,
+    items: sortNodes(g.items)
+  }))
 })
 
-function handleReorder(orderedNames) {
-  customOrder.value = orderedNames
-  localStorage.setItem('xpm-order', JSON.stringify(orderedNames))
+function handleReorder(orderedGuids) {
+  customOrder.value = orderedGuids
+  localStorage.setItem('xpm-order', JSON.stringify(orderedGuids))
   if (sortBy.value !== 'default') sortBy.value = 'default'
 }
 
-async function handleMoveToGroup({ name, group }) {
-  const config = await nodeStore.getNodeConfig(name)
+async function handleMoveToGroup(nodeOrGuid, group) {
+  // Handle event object or direct parameters
+  let guid, name
+  if (typeof nodeOrGuid === 'object' && nodeOrGuid.guid) {
+    guid = nodeOrGuid.guid
+    name = nodeOrGuid.name
+  } else if (typeof nodeOrGuid === 'object' && nodeOrGuid.name && nodeOrGuid.group !== undefined) {
+    // This handles the {name, group} object from NodeGrid
+    guid = nodeStore.nodes.value.find(n => n.name === nodeOrGuid.name)?.guid
+    name = nodeOrGuid.name
+    group = nodeOrGuid.group
+  } else {
+    guid = nodeOrGuid
+    name = nodeStore.nodes.value.find(n => n.guid === guid)?.name || guid
+  }
+
+  if (!guid) return
+  const config = await nodeStore.getNodeConfig(guid)
   if (config.error) return
-  await nodeStore.updateNode(name, { ...config, group })
+  await nodeStore.updateNode(guid, { ...config, group })
 }
 
 async function handleReorderGroups(groupNames) {
@@ -283,42 +308,42 @@ const groupNames = computed(() => {
 
 // ── Node Modal ─────────────────────────────
 const showNodeModal = ref(false)
-const editingNodeName = ref(null)
+const editingNodeGuid = ref(null)
 const cloneFormData = ref(null)
 
 function openAddModal() {
-  editingNodeName.value = null
+  editingNodeGuid.value = null
   showNodeModal.value = true
 }
 
-function openEditModal(name) {
-  editingNodeName.value = name
+function openEditModal(nodeOrGuid) {
+  editingNodeGuid.value = typeof nodeOrGuid === 'object' ? nodeOrGuid.guid : nodeOrGuid
   showNodeModal.value = true
 }
 
 function closeNodeModal() {
   showNodeModal.value = false
-  editingNodeName.value = null
+  editingNodeGuid.value = null
   cloneFormData.value = null
 }
 
-async function handleNodeSubmit({ data, isEditing, editingName }) {
+async function handleNodeSubmit({ data, isEditing, editingGuid }) {
   let success
   if (isEditing) {
-    success = await nodeStore.updateNode(editingName, data)
-    if (success && data.name !== editingName && logStore.selectedNode.value === editingName) {
-      logStore.selectedNode.value = data.name
-    }
+    success = await nodeStore.updateNode(editingGuid, data)
   } else {
     success = await nodeStore.addNode(data)
   }
   if (success) closeNodeModal()
 }
 
-async function handleNodeRemove(name) {
-  const removed = await nodeStore.removeNode(name)
+async function handleNodeRemove(nodeOrGuid) {
+  const guid = typeof nodeOrGuid === 'object' ? nodeOrGuid.guid : nodeOrGuid
+  const name = typeof nodeOrGuid === 'object' ? nodeOrGuid.name : (nodeStore.nodes.value.find(n => n.guid === guid)?.name || guid)
+  
+  const removed = await nodeStore.removeNode(guid, name)
   if (removed) {
-    if (logStore.selectedNode.value === name) logStore.closeLog()
+    if (logStore.selectedNode.value === guid) logStore.closeLog()
     closeNodeModal()
   }
 }
@@ -327,13 +352,16 @@ function handleNodeClone(cloneData) {
   // Close the edit dialog and open an Add dialog pre-filled with cloned data
   closeNodeModal()
   cloneFormData.value = cloneData
-  editingNodeName.value = null
+  editingNodeGuid.value = null
   showNodeModal.value = true
 }
 
 // ── Node Actions ───────────────────────────
-async function handleStart(name) {
-  const res = await nodeStore.startNode(name)
+async function handleStart(nodeOrGuid) {
+  const guid = typeof nodeOrGuid === 'object' ? nodeOrGuid.guid : nodeOrGuid
+  const name = typeof nodeOrGuid === 'object' ? nodeOrGuid.name : (nodeStore.nodes.value.find(n => n.guid === guid)?.name || guid)
+
+  const res = await nodeStore.startNode(guid)
   if (res?.error) {
     addNotification(`Failed to start ${name}: ${res.error}`, 'error')
   } else {
@@ -341,8 +369,11 @@ async function handleStart(name) {
   }
 }
 
-async function handleStop(name) {
-  const res = await nodeStore.stopNode(name)
+async function handleStop(nodeOrGuid) {
+  const guid = typeof nodeOrGuid === 'object' ? nodeOrGuid.guid : nodeOrGuid
+  const name = typeof nodeOrGuid === 'object' ? nodeOrGuid.name : (nodeStore.nodes.value.find(n => n.guid === guid)?.name || guid)
+
+  const res = await nodeStore.stopNode(guid)
   if (res?.error) {
     addNotification(`Failed to stop ${name}: ${res.error}`, 'error')
   } else {
@@ -350,8 +381,11 @@ async function handleStop(name) {
   }
 }
 
-async function handleRestart(name) {
-  const res = await nodeStore.restartNode(name)
+async function handleRestart(nodeOrGuid) {
+  const guid = typeof nodeOrGuid === 'object' ? nodeOrGuid.guid : nodeOrGuid
+  const name = typeof nodeOrGuid === 'object' ? nodeOrGuid.name : (nodeStore.nodes.value.find(n => n.guid === guid)?.name || guid)
+
+  const res = await nodeStore.restartNode(guid)
   if (res?.error) {
     addNotification(`Failed to restart ${name}: ${res.error}`, 'error')
   } else {
@@ -363,7 +397,7 @@ async function handleStartGroup(group) {
   const nodes = nodeStore.nodes.value.filter(n => (n.group || 'other') === group && n.status !== 'running')
   if (nodes.length === 0) return
   addNotification(`Starting group: ${group}...`, 'info')
-  const results = await Promise.all(nodes.map(n => nodeStore.startNode(n.name)))
+  const results = await Promise.all(nodes.map(n => nodeStore.startNode(n.guid)))
   const failures = results.filter(r => r?.error)
   if (failures.length > 0) {
     addNotification(`Group ${group}: ${failures.length} failed to start`, 'error')
@@ -376,7 +410,7 @@ async function handleStopGroup(group) {
   const nodes = nodeStore.nodes.value.filter(n => (n.group || 'other') === group && n.status === 'running')
   if (nodes.length === 0) return
   addNotification(`Stopping group: ${group}...`, 'info')
-  const results = await Promise.all(nodes.map(n => nodeStore.stopNode(n.name)))
+  const results = await Promise.all(nodes.map(n => nodeStore.stopNode(n.guid)))
   const failures = results.filter(r => r?.error)
   if (failures.length > 0) {
     addNotification(`Group ${group}: ${failures.length} failed to stop`, 'error')
@@ -389,6 +423,7 @@ async function handleStopGroup(group) {
 import { reactive } from 'vue'
 const branchModalStore = reactive({
   show: false,
+  nodeGuid: null,
   nodeName: null,
   branches: [],
   currentBranch: null,
@@ -396,7 +431,11 @@ const branchModalStore = reactive({
   error: null
 })
 
-async function openBranchModal(name) {
+async function openBranchModal(nodeOrGuid) {
+  const guid = typeof nodeOrGuid === 'object' ? nodeOrGuid.guid : nodeOrGuid
+  const name = typeof nodeOrGuid === 'object' ? nodeOrGuid.name : (nodeStore.nodes.value.find(n => n.guid === guid)?.name || guid)
+
+  branchModalStore.nodeGuid = guid
   branchModalStore.nodeName = name
   branchModalStore.branches = []
   branchModalStore.currentBranch = null
@@ -404,7 +443,7 @@ async function openBranchModal(name) {
   branchModalStore.loading = true
   branchModalStore.show = true
 
-  const res = await api(`/api/processes/${name}/git/branches`)
+  const res = await api(`/api/processes/${encodeURIComponent(guid)}/git/branches`)
   branchModalStore.loading = false
   if (res.error) {
     branchModalStore.error = res.error
@@ -416,6 +455,7 @@ async function openBranchModal(name) {
 
 function closeBranchModal() {
   branchModalStore.show = false
+  branchModalStore.nodeGuid = null
   branchModalStore.nodeName = null
 }
 
@@ -430,10 +470,10 @@ async function askUserStrategy(title, message) {
 }
 
 async function handleCheckoutBranch(branch, strategy = null) {
-  if (!branchModalStore.nodeName) return
-  const name = branchModalStore.nodeName
+  if (!branchModalStore.nodeGuid) return
+  const guid = branchModalStore.nodeGuid
   branchModalStore.loading = true
-  const res = await api(`/api/processes/${name}/git/checkout`, 'POST', { branch, strategy })
+  const res = await api(`/api/processes/${encodeURIComponent(guid)}/git/checkout`, 'POST', { branch, strategy })
   branchModalStore.loading = false
   
   if (res.error === 'CONFLICT') {
@@ -454,13 +494,16 @@ async function handleCheckoutBranch(branch, strategy = null) {
   await nodeStore.refresh(true)
 }
 
-async function handlePullGitChanges(name, strategy = null) {
-  const res = await api(`/api/processes/${name}/git/pull`, 'POST', { strategy })
+async function handlePullGitChanges(nodeOrGuid, strategy = null) {
+  const guid = typeof nodeOrGuid === 'object' ? nodeOrGuid.guid : nodeOrGuid
+  const name = typeof nodeOrGuid === 'object' ? nodeOrGuid.name : (nodeStore.nodes.value.find(n => n.guid === guid)?.name || guid)
+
+  const res = await api(`/api/processes/${encodeURIComponent(guid)}/git/pull`, 'POST', { strategy })
   
   if (res.error === 'CONFLICT') {
     const choice = await askUserStrategy('Git Conflict', res.message);
     if (choice) {
-      return handlePullGitChanges(name, choice);
+      return handlePullGitChanges(guid, choice);
     }
     return false;
   }
@@ -475,8 +518,11 @@ async function handlePullGitChanges(name, strategy = null) {
   return true
 }
 
-async function handlePushGitChanges(name) {
-  const res = await api(`/api/processes/${name}/git/push`, 'POST')
+async function handlePushGitChanges(nodeOrGuid) {
+  const guid = typeof nodeOrGuid === 'object' ? nodeOrGuid.guid : nodeOrGuid
+  const name = typeof nodeOrGuid === 'object' ? nodeOrGuid.name : (nodeStore.nodes.value.find(n => n.guid === guid)?.name || guid)
+
+  const res = await api(`/api/processes/${encodeURIComponent(guid)}/git/push`, 'POST')
   
   if (res.error) {
     showAlert('Push Error', res.error)
@@ -497,7 +543,7 @@ async function handleCheckAllRemote() {
     const nodesWithBranch = nodeStore.nodes.value.filter(n => n.branch && n.cwd)
     await Promise.all(
       nodesWithBranch.map(n =>
-        api(`/api/processes/${encodeURIComponent(n.name)}/git/remote-status`, 'POST').catch(() => {})
+        api(`/api/processes/${encodeURIComponent(n.guid)}/git/remote-status`, 'POST').catch(() => {})
       )
     )
     await nodeStore.refresh(true)
@@ -509,39 +555,48 @@ async function handleCheckAllRemote() {
 // ── Workspace Modal ─────────────────────────
 const workspaceModalStore = reactive({
   show: false,
+  nodeGuid: null,
   nodeName: null,
 })
 
 const workspaceModalStatus = computed(() => {
-  if (!workspaceModalStore.nodeName) return null
-  const node = nodeStore.nodes.value.find(n => n.name === workspaceModalStore.nodeName)
+  if (!workspaceModalStore.nodeGuid) return null
+  const node = nodeStore.nodes.value.find(n => n.guid === workspaceModalStore.nodeGuid)
   return node?.status || 'stopped'
 })
 
 const workspaceModalIsAgent = computed(() => {
-  if (!workspaceModalStore.nodeName) return false
-  const node = nodeStore.nodes.value.find(n => n.name === workspaceModalStore.nodeName)
+  if (!workspaceModalStore.nodeGuid) return false
+  const node = nodeStore.nodes.value.find(n => n.guid === workspaceModalStore.nodeGuid)
   return node?.type === 'agent'
 })
 
-function openWorkspaceModal(node) {
-  if (workspaceModalStore.show && workspaceModalStore.nodeName === node.name) {
+function openWorkspaceModal(nodeOrGuid) {
+  const guid = typeof nodeOrGuid === 'object' ? nodeOrGuid.guid : nodeOrGuid
+  const name = typeof nodeOrGuid === 'object' ? nodeOrGuid.name : (nodeStore.nodes.value.find(n => n.guid === guid)?.name || guid)
+
+  if (workspaceModalStore.show && workspaceModalStore.nodeGuid === guid) {
     workspaceModalStore.show = false
+    workspaceModalStore.nodeGuid = null
     workspaceModalStore.nodeName = null
     return
   }
-  workspaceModalStore.nodeName = node.name
+  workspaceModalStore.nodeGuid = guid
+  workspaceModalStore.nodeName = name
   workspaceModalStore.show = true
   
-  if (node.type === 'agent') {
-    if (logStore.selectedNode.value !== node.name) {
-      handleSelectLog(node.name)
+  const node = typeof nodeOrGuid === 'object' ? nodeOrGuid : nodeStore.nodes.value.find(n => n.guid === guid)
+
+  if (node?.type === 'agent') {
+    if (logStore.selectedNode.value !== guid) {
+      handleSelectLog(guid)
     }
   }
 }
 
 function closeWorkspaceModal() {
   workspaceModalStore.show = false
+  workspaceModalStore.nodeGuid = null
   workspaceModalStore.nodeName = null
 }
 
@@ -551,22 +606,24 @@ const logPopoverRef = ref(null)
 
 const selectedNodeObject = computed(() => {
   if (!logStore.selectedNode.value) return null
-  return nodeStore.nodes.value.find(n => n.name === logStore.selectedNode.value) || null
+  return nodeStore.nodes.value.find(n => n.guid === logStore.selectedNode.value) || null
 })
 
-function handleSelectLog(name) {
+function handleSelectLog(nodeOrGuid) {
+  const guid = typeof nodeOrGuid === 'object' ? nodeOrGuid.guid : nodeOrGuid
   popoverStore.hideLogPopover()
-  logStore.selectLog(name)
+  logStore.selectLog(guid)
 }
 
 function handleCloseLog() {
-  const closedNode = logStore.selectedNode.value
+  const closedGuid = logStore.selectedNode.value
   logStore.closeLog()
   
-  if (workspaceModalStore.show && workspaceModalStore.nodeName === closedNode) {
-    const node = nodeStore.nodes.value.find(n => n.name === closedNode)
+  if (workspaceModalStore.show && workspaceModalStore.nodeGuid === closedGuid) {
+    const node = nodeStore.nodes.value.find(n => n.guid === closedGuid)
     if (node?.type === 'agent') {
       workspaceModalStore.show = false
+      workspaceModalStore.nodeGuid = null
       workspaceModalStore.nodeName = null
     }
   }

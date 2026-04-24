@@ -53,8 +53,8 @@ export function useSettings() {
     ]
     const gList = Array.isArray(groupData) && groupData.length ? groupData : fallback
     groupRows.value = gList.map((g) => {
-      if (typeof g === 'string') return { name: g, color: '#888888' }
-      return { name: g.name || '', color: normalizeColorInput(g.color) }
+      if (typeof g === 'string') return { guid: null, name: g, color: '#888888' }
+      return { guid: g.guid, name: g.name || '', color: normalizeColorInput(g.color) }
     })
 
     toolRows.value = Array.isArray(toolsData) && toolsData.length 
@@ -133,7 +133,7 @@ export function useSettings() {
         return false
       }
       seen.add(name)
-      groups.push({ name, color: normalizeColorInput(row.color) })
+      groups.push({ guid: row.guid, name, color: normalizeColorInput(row.color) })
     }
     if (groups.length === 0) {
       alert('At least one non-empty group is required.')

@@ -1,29 +1,29 @@
 <template>
   <div
     class="card-actions"
-    @mouseenter="$emit('hover-cancel', node.name)"
-    @mouseleave="$emit('hover-enter', node.name, cardRef, expanded, node.command)"
+    @mouseenter="$emit('hover-cancel', node.guid)"
+    @mouseleave="$emit('hover-enter', node.guid, cardRef, expanded, node.command)"
   >
     <template v-if="node.status === 'running' && !isSelected">
       <button 
         ref="mainActionBtn" 
         class="btn-stop btn-icon" 
-        @click.stop="$emit('stop', node.name)" 
-        @keydown.enter.stop="$emit('stop', node.name)"
-        @keydown.space.stop.prevent="$emit('stop', node.name)"
+        @click.stop="$emit('stop', node.guid)" 
+        @keydown.enter.stop="$emit('stop', node.guid)"
+        @keydown.space.stop.prevent="$emit('stop', node.guid)"
         title="Stop"
       >
         <i class="fa-solid fa-stop"></i>
       </button>
-      <button class="btn-restart btn-icon" @click.stop="$emit('restart', node.name)" title="Restart"><i class="fa-solid fa-rotate-right"></i></button>
+      <button class="btn-restart btn-icon" @click.stop="$emit('restart', node.guid)" title="Restart"><i class="fa-solid fa-rotate-right"></i></button>
     </template>
     <template v-else-if="!isSelected">
       <button 
         ref="mainActionBtn" 
         class="btn-start btn-icon" 
-        @click.stop="$emit('start', node.name)" 
-        @keydown.enter.stop="$emit('start', node.name)"
-        @keydown.space.stop.prevent="$emit('start', node.name)"
+        @click.stop="$emit('start', node.guid)" 
+        @keydown.enter.stop="$emit('start', node.guid)"
+        @keydown.space.stop.prevent="$emit('start', node.guid)"
         title="Start"
       >
         <i class="fa-solid fa-play"></i>
@@ -98,7 +98,7 @@
         </div>
       </div>
     </div>
-    <button v-if="showEdit && (isSelected ? !terminalOpen : true)" class="btn-gear" @click.stop="$emit('edit', node.name)">
+    <button v-if="showEdit && (isSelected ? !terminalOpen : true)" class="btn-gear" @click.stop="$emit('edit', node.guid)">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <circle cx="12" cy="12" r="3"/>
         <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
@@ -226,7 +226,7 @@ async function runTool(tool) {
     if (param === null) return // cancelled
   }
   showTools.value = false
-  await executeTool(props.node.name, tool, param)
+  await executeTool(props.node.guid, tool, param)
 }
 
 async function browseParam(index, type) {
@@ -244,7 +244,7 @@ async function browseParam(index, type) {
 async function confirmRunTool() {
   const { tool, values } = toolParamConfig.value
   toolParamConfig.value = null
-  await executeTool(props.node.name, tool, null, values)
+  await executeTool(props.node.guid, tool, null, values)
 }
 
 async function toggleSessions() {
@@ -254,7 +254,7 @@ async function toggleSessions() {
   if (showSessions.value) {
     loadingSessions.value = true
     try {
-      sessions.value = await api(`/api/processes/${encodeURIComponent(props.node.name)}/sessions`)
+      sessions.value = await api(`/api/processes/${encodeURIComponent(props.node.guid)}/sessions`)
     } catch (err) {
       console.error('Failed to fetch sessions:', err)
       showAlert('Error', 'Failed to fetch sessions.')
@@ -266,10 +266,10 @@ async function toggleSessions() {
 
 async function resumeSession(sessionId) {
   try {
-    const result = await api(`/api/processes/${encodeURIComponent(props.node.name)}/resume/${sessionId}`, 'POST')
+    const result = await api(`/api/processes/${encodeURIComponent(props.node.guid)}/resume/${sessionId}`, 'POST')
     if (result && result.staleSession) {
       try {
-        sessions.value = await api(`/api/processes/${encodeURIComponent(props.node.name)}/sessions`)
+        sessions.value = await api(`/api/processes/${encodeURIComponent(props.node.guid)}/sessions`)
       } catch {}
       showAlert('Session unavailable', result.error)
       return
@@ -279,7 +279,7 @@ async function resumeSession(sessionId) {
       return
     }
     showSessions.value = false
-    emit('start', props.node.name)
+    emit('start', props.node.guid)
   } catch (err) {
     console.error('Failed to resume session:', err)
     showAlert('Error', `Failed to resume session: ${err.message}`)

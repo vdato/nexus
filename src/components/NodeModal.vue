@@ -290,7 +290,7 @@ import { api } from '../composables/useApi.js'
 
 const props = defineProps({
   show: { type: Boolean, default: false },
-  editingName: { type: String, default: null },
+  editingGuid: { type: String, default: null },
   groupNames: { type: Array, default: () => ['other'] },
   colorMap: { type: Object, default: () => ({}) },
   nodes: { type: Array, default: () => [] },
@@ -306,7 +306,12 @@ function handleOverlayClick() {
   overlayMouseDown.value = false
 }
 
-const isEditing = computed(() => !!props.editingName)
+const isEditing = computed(() => !!props.editingGuid)
+
+const editingName = computed(() => {
+  if (!props.editingGuid) return null
+  return props.nodes.find(n => n.guid === props.editingGuid)?.name || props.editingGuid
+})
 
 const nodeTypes = [
   { value: 'service', label: 'Service', icon: 'fa-solid fa-server' },

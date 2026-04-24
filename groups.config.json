@@ -1,21 +1,26 @@
 [
   {
+    "guid": "8116c409-0633-4ce5-96ed-8ce897b3abc8",
     "name": "frontend-infra",
     "color": "#888888"
   },
   {
+    "guid": "6397bf91-b3c5-410e-89f3-70b16a5920a6",
     "name": "infra",
     "color": "#a78bfa"
   },
   {
+    "guid": "c155f0bf-ea5f-4330-a7c7-aca40d2ff19a",
     "name": "devs",
     "color": "#001eff"
   },
   {
+    "guid": "55b7ebc1-2a08-4ecf-babc-e2c9972df9ac",
     "name": "backend",
     "color": "#888888"
   },
   {
+    "guid": "ad243969-809a-4b3e-9c49-0240472eb37d",
     "name": "dreamout",
     "color": "#ff0000"
   }

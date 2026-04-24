@@ -39,7 +39,7 @@ export function useNodes() {
   }
 
   function buildSortedGroups(items, groupDefs) {
-    const grouped = {}
+    const grouped = {} // Map of groupName -> items
     for (const p of items) {
       const g = p.group || 'other'
       if (!grouped[g]) grouped[g] = []
@@ -50,13 +50,22 @@ export function useNodes() {
     const order = orderNames.length ? orderNames : ['infra', 'frontend', 'backend']
     const colorMap = buildGroupColorMap(groupDefs)
 
-    const sorted = Object.entries(grouped).sort((a, b) => {
+    const sortedEntries = Object.entries(grouped).sort((a, b) => {
       const ia = order.indexOf(a[0])
       const ib = order.indexOf(b[0])
       const va = ia === -1 ? 999 : ia
       const vb = ib === -1 ? 999 : ib
       if (va !== vb) return va - vb
       return a[0].localeCompare(b[0])
+    })
+
+    const sorted = sortedEntries.map(([name, items]) => {
+      const def = groupDefs.find(d => (typeof d === 'string' ? d : d.name) === name)
+      return {
+        name,
+        guid: (def && typeof def === 'object') ? def.guid : name,
+        items
+      }
     })
 
     return { sorted, colorMap }
@@ -86,6 +95,7 @@ export function useNodes() {
 
     const snapshot = JSON.stringify({
       nodes: items.map((p) => ({
+        guid: p.guid,
         name: p.name,
         status: p.status,
         pid: p.pid,
@@ -102,7 +112,7 @@ export function useNodes() {
 
     // Check for status changes (specifically scripts finishing)
     for (const p of items) {
-      const prev = previousStatuses.get(p.name)
+      const prev = previousStatuses.get(p.guid)
       if (prev === 'running' && p.type === 'script') {
         if (p.status === 'stopped') {
           addNotification(`Script "${p.name}" finished successfully`, 'success')
@@ -110,27 +120,27 @@ export function useNodes() {
           addNotification(`Script "${p.name}" failed`, 'error')
         }
       }
-      previousStatuses.set(p.name, p.status)
+      previousStatuses.set(p.guid, p.status)
     }
 
     nodes.value = items
     groups.value = defs
   }
 
-  async function startNode(name) {
-    const res = await api(`/api/processes/${encodeURIComponent(name)}/start`, 'POST')
+  async function startNode(guid) {
+    const res = await api(`/api/processes/${encodeURIComponent(guid)}/start`, 'POST')
     await refresh(true)
     return res
   }
 
-  async function stopNode(name) {
-    const res = await api(`/api/processes/${encodeURIComponent(name)}/stop`, 'POST')
+  async function stopNode(guid) {
+    const res = await api(`/api/processes/${encodeURIComponent(guid)}/stop`, 'POST')
     await refresh(true)
     return res
   }
 
-  async function restartNode(name) {
-    const res = await api(`/api/processes/${encodeURIComponent(name)}/restart`, 'POST')
+  async function restartNode(guid) {
+    const res = await api(`/api/processes/${encodeURIComponent(guid)}/restart`, 'POST')
     await refresh(true)
     return res
   }
@@ -152,23 +162,23 @@ export function useNodes() {
     return true
   }
 
-  async function updateNode(oldName, data) {
-    const result = await api(`/api/config/${encodeURIComponent(oldName)}`, 'PUT', data)
+  async function updateNode(guid, data) {
+    const result = await api(`/api/config/${encodeURIComponent(guid)}`, 'PUT', data)
     if (result.error) { alert(result.error); return false }
     await refresh(true)
     return true
   }
 
-  async function removeNode(name) {
+  async function removeNode(guid, name) {
     if (!confirm(`Remove "${name}" from config?`)) return false
-    const result = await api(`/api/config/${encodeURIComponent(name)}`, 'DELETE')
+    const result = await api(`/api/config/${encodeURIComponent(guid)}`, 'DELETE')
     if (result.error) { alert(result.error); return false }
     await refresh(true)
     return true
   }
 
-  async function getNodeConfig(name) {
-    return api(`/api/config/${encodeURIComponent(name)}`)
+  async function getNodeConfig(guid) {
+    return api(`/api/config/${encodeURIComponent(guid)}`)
   }
 
   async function importNodes(fileData) {

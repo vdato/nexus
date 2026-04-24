@@ -1,65 +1,68 @@
 <template>
   <div>
     <div 
-      v-for="([group, items], gi) in sortedGroups" :key="group"
+      v-for="(g, gi) in sortedGroups" :key="g.guid || g.name"
       class="group-section"
-      :class="{ 'group-hovered': hoveredGroup === group && group }"
-      :style="{ '--group-color': colorMap[group || 'other'] || '#4b5563' }"
-      @mouseenter="hoveredGroup = group"
+      :class="{ 
+        'group-hovered': hoveredGroup === g.name && g.name,
+        'group-selected': selectedNode && g.items.some(p => p.guid === selectedNode)
+      }"
+      :style="{ '--group-color': colorMap[g.name || 'other'] || '#4b5563' }"
+      @mouseenter="hoveredGroup = g.name"
       @mouseleave="hoveredGroup = null"
     >
       <div
-        v-if="group"
+        v-if="g.name"
         class="group-title"
         :class="{
           'group-drag-over': groupDragOverIndex === gi && groupDragOverIndex !== groupDragIndex,
-          'group-card-drag-over': cardDragOverGroup === group && dragName,
-          'collapsed': collapsedGroups[group]
+          'group-card-drag-over': cardDragOverGroup === g.name && dragGuid,
+          'collapsed': collapsedGroups[g.guid || g.name]
         }"
-        @click="toggleGroup(group)"
+        @click="toggleGroup(g.guid || g.name)"
         @dragover.prevent="onGroupHeaderDragOver(gi, $event)"
         @dragleave="onGroupHeaderDragLeave(gi)"
-        @drop.prevent="onGroupHeaderDrop(gi, group)"
+        @drop.prevent="onGroupHeaderDrop(gi, g.name)"
       >
         <span
           class="group-title-drag-handle"
           draggable="true"
-          @dragstart.stop="onGroupDragStart(gi, group, $event)"
+          @dragstart.stop="onGroupDragStart(gi, g.name, $event)"
           @dragend="onGroupDragEnd"
           @click.stop
           title="Drag to reorder group"
         ><i class="fa-solid fa-grip-vertical"></i></span>
         <i class="fa-solid fa-chevron-down group-collapse-icon"></i>
-        {{ group }}
+        {{ g.name }}
         
         <StatSummary 
-          :counts="getCounts(items)" 
-          :total="items.length" 
+          :counts="getCounts(g.items)" 
+          :total="g.items.length" 
           size="small"
           class="group-summary"
         />
 
         <div class="group-title-actions" @click.stop>
-          <button class="btn-start btn-icon" style="padding: 2px 6px; font-size: 11px" @click="$emit('start-group', group)" title="Start all in group"><i class="fa-solid fa-forward-fast"></i></button>
-          <button class="btn-stop btn-icon" style="padding: 2px 6px; font-size: 11px" @click="$emit('stop-group', group)" title="Stop all in group"><i class="fa-solid fa-power-off"></i></button>
+          <button class="btn-start btn-icon" style="padding: 2px 6px; font-size: 11px" @click="$emit('start-group', g.name)" title="Start all in group"><i class="fa-solid fa-forward-fast"></i></button>
+          <button class="btn-stop btn-icon" style="padding: 2px 6px; font-size: 11px" @click="$emit('stop-group', g.name)" title="Stop all in group"><i class="fa-solid fa-power-off"></i></button>
         </div>
       </div>
-      <div v-show="!collapsedGroups[group] || !group" class="node-grid">
+      <div v-show="!collapsedGroups[g.guid || g.name] || !g.name" class="node-grid">
         <NodeCard
-          v-for="p in items"
-          :key="p.name"
+          v-for="p in g.items"
+          :key="p.guid"
           :node="p"
           :border-color="colorMap[p.group || 'other'] || '#4b5563'"
-          :is-selected="selectedNode === p.name"
-          :terminal-open="selectedNode === p.name"
-          :workspace-open="workspaceNode === p.name"
+          :is-selected="selectedNode === p.guid"
+          :terminal-open="selectedNode === p.guid"
+          :workspace-open="workspaceNode === p.guid"
           draggable="true"
-          @dragstart="onDragStart(p.name, $event)"
-          @dragover.prevent="onDragOver(p.name, $event)"
+          @dragstart="onDragStart(p.guid, $event)"
+          @dragover.prevent="onDragOver(p.guid, $event)"
           @dragend="onDragEnd"
-          @drop.prevent="onDrop(p.name)"
+          @drop.prevent="onDrop(p.guid)"
           :class="{ 
-            'drag-over': dragOverName === p.name && dragOverName !== dragName,
+            'drag-over': dragOverGuid === p.guid && dragOverGuid !== dragGuid,
             'card-agent': p.type === 'agent'
           }"
           @select="$emit('select', $event)"
@@ -109,67 +112,67 @@ function toggleGroup(group) {
 }
 
 // ── Card Drag and Drop ─────────────────────
-const dragName = ref(null)
-const dragOverName = ref(null)
+const dragGuid = ref(null)
+const dragOverGuid = ref(null)
 const cardDragOverGroup = ref(null)
 
-function onDragStart(name, ev) {
+function onDragStart(guid, ev) {
   // Don't drag when interacting with terminal, log body, or input areas
   const src = ev.target
   if (src.closest('.card-xterm-container, .card-log-body, .xterm')) {
     ev.preventDefault()
     return
   }
-  dragName.value = name
+  dragGuid.value = guid
   ev.dataTransfer.effectAllowed = 'move'
-  ev.dataTransfer.setData('text/plain', name)
+  ev.dataTransfer.setData('text/plain', guid)
   requestAnimationFrame(() => {
     if (ev.target) ev.target.style.opacity = '0.4'
   })
 }
 
-function onDragOver(name) {
-  dragOverName.value = name
+function onDragOver(guid) {
+  dragOverGuid.value = guid
 }
 
 function onDragEnd(ev) {
   if (ev.target) ev.target.style.opacity = ''
-  dragName.value = null
-  dragOverName.value = null
+  dragGuid.value = null
+  dragOverGuid.value = null
   cardDragOverGroup.value = null
 }
 
-function findNodeGroup(name) {
-  for (const [group, items] of props.sortedGroups) {
-    if (items.some(p => p.name === name)) return group
+function findNodeGroupByGuid(guid) {
+  for (const g of props.sortedGroups) {
+    if (g.items.some(p => p.guid === guid)) return g.name
   }
   return null
 }
 
-function onDrop(targetName) {
-  const sourceName = dragName.value
-  if (!sourceName || sourceName === targetName) return
+function onDrop(targetGuid) {
+  const sourceGuid = dragGuid.value
+  if (!sourceGuid || sourceGuid === targetGuid) return
 
-  const sourceGroup = findNodeGroup(sourceName)
-  const targetGroup = findNodeGroup(targetName)
+  const sourceGroup = findNodeGroupByGuid(sourceGuid)
+  const targetGroup = findNodeGroupByGuid(targetGuid)
 
   // Cross-group: move process to the target's group
   if (sourceGroup !== targetGroup && targetGroup) {
-    emit('move-to-group', { name: sourceName, group: targetGroup })
+    emit('move-to-group', { guid: sourceGuid, group: targetGroup })
   }
 
   // Reorder within display
-  const allNames = props.sortedGroups.flatMap(([, items]) => items.map(p => p.name))
-  const srcIdx = allNames.indexOf(sourceName)
-  const tgtIdx = allNames.indexOf(targetName)
+  const allGuids = props.sortedGroups.flatMap(g => g.items.map(p => p.guid))
+  const srcIdx = allGuids.indexOf(sourceGuid)
+  const tgtIdx = allGuids.indexOf(targetGuid)
   if (srcIdx === -1 || tgtIdx === -1) return
 
-  allNames.splice(srcIdx, 1)
-  allNames.splice(tgtIdx, 0, sourceName)
+  allGuids.splice(srcIdx, 1)
+  allGuids.splice(tgtIdx, 0, sourceGuid)
 
-  emit('reorder', allNames)
-  dragName.value = null
-  dragOverName.value = null
+  emit('reorder', allGuids)
+  dragGuid.value = null
+  dragOverGuid.value = null
   cardDragOverGroup.value = null
 }
 
@@ -187,27 +190,27 @@ function onGroupHeaderDragOver(gi) {
   if (groupDragIndex.value !== null) {
     groupDragOverIndex.value = gi
   }
-  if (dragName.value) {
-    cardDragOverGroup.value = props.sortedGroups[gi]?.[0] || null
+  if (dragGuid.value) {
+    cardDragOverGroup.value = props.sortedGroups[gi]?.name || null
   }
 }
 
 function onGroupHeaderDragLeave(gi) {
   if (groupDragOverIndex.value === gi) groupDragOverIndex.value = null
-  const group = props.sortedGroups[gi]?.[0]
+  const group = props.sortedGroups[gi]?.name
   if (cardDragOverGroup.value === group) cardDragOverGroup.value = null
 }
 
 function onGroupHeaderDrop(gi, group) {
   // Card dropped onto group header
-  if (dragName.value) {
-    const sourceName = dragName.value
-    const sourceGroup = findNodeGroup(sourceName)
+  if (dragGuid.value) {
+    const sourceGuid = dragGuid.value
+    const sourceGroup = findNodeGroupByGuid(sourceGuid)
     if (sourceGroup !== group) {
-      emit('move-to-group', { name: sourceName, group })
+      emit('move-to-group', { guid: sourceGuid, group })
     }
-    dragName.value = null
-    dragOverName.value = null
+    dragGuid.value = null
+    dragOverGuid.value = null
     cardDragOverGroup.value = null
     return
   }
@@ -216,7 +219,7 @@ function onGroupHeaderDrop(gi, group) {
   const from = groupDragIndex.value
   if (from === null || from === gi) return
 
-  const groupNames = props.sortedGroups.map(([name]) => name)
+  const groupNames = props.sortedGroups.map(g => g.name)
   const [moved] = groupNames.splice(from, 1)
   groupNames.splice(gi, 0, moved)
 

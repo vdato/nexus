@@ -4,9 +4,9 @@
     class="card"
     :class="{ selected: isSelected, expanded, stopped: node.status !== 'running' }"
     :style="{ borderColor, '--card-color': borderColor }"
-    @click="$emit('select', node.name)"
-    @mouseenter="$emit('hover-enter', node.name, $event.currentTarget, expanded, node.command)"
-    @mouseleave="!expanded && $emit('hover-leave', node.name)"
+    @click="$emit('select', node.guid)"
+    @mouseenter="$emit('hover-enter', node.guid, $event.currentTarget, expanded, node.command)"
+    @mouseleave="!expanded && $emit('hover-leave', node.guid)"
   >
     <div class="card-header">
       <div class="card-name">
@@ -33,7 +33,7 @@
     </div>
     <div class="card-meta">
       <div v-if="node.branch" class="branch-tag-group" @click.stop>
-        <span class="branch-tag" @click.stop="$emit('branch-click', node.name)">{{ node.branch }}</span>
+        <span class="branch-tag" @click.stop="$emit('branch-click', node.guid)">{{ node.branch }}</span>
         <button
           v-if="gitRemoteStatus === 'behind'"
           class="btn-git-action btn-pull"
@@ -119,7 +119,7 @@ const uptime = computed(() => {
 async function checkGitStatus() {
   gitRemoteStatus.value = 'checking'
   try {
-    const res = await api(`/api/processes/${encodeURIComponent(props.node.name)}/git/remote-status`, 'POST')
+    const res = await api(`/api/processes/${encodeURIComponent(props.node.guid)}/git/remote-status`, 'POST')
     gitRemoteStatus.value = res.status
   } catch (err) {
     console.error('Failed to check git status:', err)
@@ -130,7 +130,7 @@ async function checkGitStatus() {
 
 async function pullGitChanges() {
   gitRemoteStatus.value = 'checking'
-  emit('pull-git', props.node.name, (success) => {
+  emit('pull-git', props.node.guid, (success) => {
     if (success) {
       checkGitStatus()
     } else {
@@ -141,7 +141,7 @@ async function pullGitChanges() {
 
 async function pushGitChanges() {
   gitRemoteStatus.value = 'checking'
-  emit('push-git', props.node.name, (success) => {
+  emit('push-git', props.node.guid, (success) => {
     if (success) {
       checkGitStatus()
     } else {
